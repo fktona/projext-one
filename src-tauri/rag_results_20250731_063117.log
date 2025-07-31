@@ -1,0 +1,71 @@
+=== RAG QUERY LOG ===
+Timestamp: 2025-07-31 06:31:17.291252700 UTC
+Query: I'll analyze your usage patterns and activity data for SSH, Telnet, Rlogin, and SUPDUP client for this month. I can help you understand your productivity, identify patterns, and suggest optimizations.
+Total chunks available: 5299
+Top K: 10
+Similarity threshold: 0.1
+
+Filtered search keywords: ["i'll", "your", "usage", "patterns", "data", "ssh,", "telnet,", "rlogin,", "supdup", "client", "this", "month.", "i", "help", "you", "understand", "your", "productivity,", "identify", "patterns,", "suggest", "optimizations."]
+Found 3499 chunks with score >= 0.1
+Selected top 10 chunks:
+Chunk 1 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T19:20:00.768898+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) Connection type: O SSH C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions goscol Default Settings agents fe i sol oscol new-gg Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 2 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:34:48.378001+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) Connection type: O C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions agents fe i sol oscol new-gg new-ggs newmint Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 3 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:34:48.378001+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) Connection type: O C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions agents fe i sol oscol new-gg new-ggs newmint Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 4 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:34:46.359706400+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) Connection type: O C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions agents fe gigsol goscol new-gig new-ggs newmint Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 5 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:34:46.359706400+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) Connection type: O C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions agents fe gigsol goscol new-gig new-ggs newmint Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 6 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:06:30.089856500+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) Connection type: O SSH C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions goscol Default Settings agents fe i sol oscol new-gg Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 7 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:05:23.565912200+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) 13_61_ 153_ 167 Connection type: O SSH C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions goscol Default Settings agents fe i sol oscol new-gg Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 8 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:05:19.600775500+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) 13_61_ 153_ 167 Connection type: O SSH C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions goscol Default Settings agents fe i sol oscol new-gg Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 9 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:05:16.222182+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) 13_50_ 100_154 Connection type: O SSH C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions newmint agents fe i sol oscol new-gg new-ggs newmint Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Chunk 10 (Score: 0.500):
+  Type: ocr
+  App: SSH, Telnet, Rlogin, and SUPDUP client
+  Timestamp: 2025-07-21T17:05:12.811507+00:00
+  Content: OCR from SSH, Telnet, Rlogin, and SUPDUP client: Category: Session Logging Terminal Keyboard Features Window Appearance Behaviour Translation HE] Selection Colours Connection Data Proxy SSH Serial Telnet Rlogin SUPDUP About Basic options for your PuTTY session Specify the destination you want to connect to Host Name (or IP address) 13_50_ 100_154 Connection type: O SSH C) Serial C) Other: Telnet Load, save or delete a stored session Port 22 Saved Sessions newmint agents fe gigsol goscol new-gig newmint Close window on exit: Never Help Load Save O Only on clean exit Open Cancel
+  ---
+Generating AI response...

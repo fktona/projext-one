@@ -1,0 +1,39 @@
+[package]
+name = "app"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+license = ""
+repository = ""
+default-run = "app"
+edition = "2021"
+rust-version = "1.57"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "2.3.1", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "2.7.0", features = [ "tray-icon"] }
+sysinfo = "0.30"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+tokio = { version = "1.0", features = ["full", "rt-multi-thread"] }
+once_cell = "1.19"
+anyhow = "1.0"
+base64 = "0.21"
+# RAG dependencies
+uuid = { version = "1.0", features = ["v4"] }
+
+[features]
+# by default Tauri runs in production mode
+# when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
+# when `tauri build` runs it is executed with `cargo build --release` if `devPath` is an URL
+# you can add either `"devPath"` or `"distDir"` to the `beforeDevCommand` and `beforeBuildCommand` in `tauri.conf.json`
+# the CLI will pass the inferred value to the `cargo` command
+# for example `tauri dev` (devPath) will execute `cargo run --no-default-features`
+# for example `tauri build` (distDir) will execute `cargo build --release`
+# for more info see the configuration schema at https://tauri.app/v1/api/config#buildconfig.beforedevcommand
