@@ -78,7 +78,7 @@ jobs:
         run: |
           # Get the version from tauri.conf.json
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          
+
           # Function to get signature for a file
           get_signature() {
             local file_path="$1"
@@ -89,19 +89,19 @@ jobs:
               echo "PLACEHOLDER_SIGNATURE"
             fi
           }
-          
+
           # Find and sign the built files
           DMG_X64=$(find src-tauri/target/release/bundle -name "*_x64.dmg" -type f | head -1)
           DMG_ARM64=$(find src-tauri/target/release/bundle -name "*_arm64.dmg" -type f | head -1)
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1)
           EXE=$(find src-tauri/target/release/bundle -name "*.exe" -type f | head -1)
-          
+
           # Get signatures
           DMG_X64_SIG=$(get_signature "$DMG_X64")
           DMG_ARM64_SIG=$(get_signature "$DMG_ARM64")
           APPIMAGE_SIG=$(get_signature "$APPIMAGE")
           EXE_SIG=$(get_signature "$EXE")
-          
+
           # Create latest.json with real signatures
           cat > latest.json << EOF
           {
@@ -128,7 +128,7 @@ jobs:
             }
           }
           EOF
-          
+
           echo "Generated latest.json with signatures:"
           cat latest.json
 
@@ -138,18 +138,18 @@ jobs:
           name: app-${{ matrix.platform }}
           path: src-tauri/target/release/bundle/
 
-              - name: Create Release
-          if: matrix.platform == 'ubuntu-latest'
-          uses: softprops/action-gh-release@v1
-          with:
-            files: |
-              src-tauri/target/release/bundle/**/*.deb
-              src-tauri/target/release/bundle/**/*.AppImage
-              src-tauri/target/release/bundle/**/*.dmg
-              src-tauri/target/release/bundle/**/*.msi
-              src-tauri/target/release/bundle/**/*.exe
-              latest.json
-            draft: false
-            prerelease: false
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        if: matrix.platform == 'ubuntu-latest'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.exe
+            latest.json
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
