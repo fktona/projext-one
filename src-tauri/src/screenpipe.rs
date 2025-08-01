@@ -1,10 +1,8 @@
-use crate::types::{
-    AudioData, ExportData, ExportMetadata, OcrData, ScreenPipeResponse, UiData,
-};
+use crate::types::{AudioData, ExportData, ExportMetadata, OcrData, ScreenPipeResponse, UiData};
 use reqwest::Client;
 use serde_json;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn run_screenpipe(args: &[&str]) -> Result<String, String> {
     Command::new("screenpipe")
@@ -90,7 +88,8 @@ pub async fn fetch_screenpipe_data(start_time: u64) -> Result<ExportData, String
     while has_more {
         let url = format!(
             "http://localhost:3030/search?content_type=ocr&limit={}&offset={}",
-            limit, offset / 10
+            limit,
+            offset / 10
         );
 
         println!("Fetching data from: {}", url);
@@ -159,7 +158,8 @@ pub async fn fetch_screenpipe_data(start_time: u64) -> Result<ExportData, String
             }
         }
 
-        has_more = screenpipe_response.pagination.offset + screenpipe_response.pagination.limit < screenpipe_response.pagination.total;
+        has_more = screenpipe_response.pagination.offset + screenpipe_response.pagination.limit
+            < screenpipe_response.pagination.total;
         offset += limit;
 
         // Safety check to prevent infinite loops
@@ -188,7 +188,9 @@ pub async fn fetch_screenpipe_data(start_time: u64) -> Result<ExportData, String
     })
 }
 
-pub async fn fetch_screenpipe_data_with_query(query: serde_json::Value) -> Result<ExportData, String> {
+pub async fn fetch_screenpipe_data_with_query(
+    query: serde_json::Value,
+) -> Result<ExportData, String> {
     let client = Client::new();
 
     let mut all_data = Vec::new();
@@ -210,7 +212,8 @@ pub async fn fetch_screenpipe_data_with_query(query: serde_json::Value) -> Resul
     while has_more {
         let mut url = format!(
             "http://localhost:3030/search?content_type=ocr&limit={}&offset={}",
-            limit, offset / 10
+            limit,
+            offset / 10
         );
 
         // Add optional query parameters
@@ -290,7 +293,8 @@ pub async fn fetch_screenpipe_data_with_query(query: serde_json::Value) -> Resul
             }
         }
 
-        has_more = screenpipe_response.pagination.offset + screenpipe_response.pagination.limit < screenpipe_response.pagination.total;
+        has_more = screenpipe_response.pagination.offset + screenpipe_response.pagination.limit
+            < screenpipe_response.pagination.total;
         offset += limit;
 
         // Safety check to prevent infinite loops
@@ -321,62 +325,66 @@ pub async fn fetch_screenpipe_data_with_query(query: serde_json::Value) -> Resul
 
 pub async fn fetch_screenpipe_data_with_offset(start_offset: u64) -> Result<ExportData, String> {
     let client = Client::new();
-    
+
     let mut all_data = Vec::new();
     let mut ocr_data = Vec::new();
     let mut audio_data = Vec::new();
     let mut ui_data = Vec::new();
-    
+
     let mut offset = start_offset;
     let limit = 100;
     let mut has_more = true;
     let mut total_items_known = 0u64;
-    
+
     while has_more {
         let url = format!(
             "http://localhost:3030/search?content_type=ocr&limit={}&offset={}",
-            limit, offset / 10
+            limit,
+            offset / 10
         );
-        
+
         println!("Fetching data from offset {}: {}", offset, url);
-        
+
         let response = client
             .get(&url)
             .send()
             .await
             .map_err(|e| format!("Failed to send request: {}", e))?;
-        
+
         if !response.status().is_success() {
             return Err(format!("HTTP error: {}", response.status()));
         }
-        
+
         let response_text = response
             .text()
             .await
             .map_err(|e| format!("Failed to read response: {}", e))?;
-        
+
         let screenpipe_response: ScreenPipeResponse = serde_json::from_str(&response_text)
             .map_err(|e| format!("Failed to parse JSON: {}", e))?;
-        
+
         // Update total items known
         total_items_known = screenpipe_response.pagination.total;
-        
+
         // If no data returned, we're done
         if screenpipe_response.data.is_empty() {
             // has_more = false;
             break;
         }
-        
+
         for item in screenpipe_response.data {
             all_data.push(item.content.clone());
-            
+
             match item.content_type.to_lowercase().as_str() {
                 "ocr" => {
                     if let Some(text) = item.content["text"].as_str() {
                         let ocr_item = OcrData {
                             text: text.to_string(),
                             app_name: item.content["app_name"].as_str().unwrap_or("").to_string(),
-                            window_name: item.content["window_name"].as_str().unwrap_or("").to_string(),
+                            window_name: item.content["window_name"]
+                                .as_str()
+                                .unwrap_or("")
+                                .to_string(),
                             timestamp: item.content["timestamp"].as_str().unwrap_or("").to_string(),
                             raw_content: item.content,
                         };
@@ -387,7 +395,10 @@ pub async fn fetch_screenpipe_data_with_offset(start_offset: u64) -> Result<Expo
                     if let Some(transcription) = item.content["transcription"].as_str() {
                         let audio_item = AudioData {
                             transcription: transcription.to_string(),
-                            speaker_id: item.content["speaker_id"].as_str().unwrap_or("").to_string(),
+                            speaker_id: item.content["speaker_id"]
+                                .as_str()
+                                .unwrap_or("")
+                                .to_string(),
                             raw_content: item.content,
                         };
                         audio_data.push(audio_item);
@@ -395,7 +406,10 @@ pub async fn fetch_screenpipe_data_with_offset(start_offset: u64) -> Result<Expo
                 }
                 "ui" => {
                     let ui_item = UiData {
-                        element_type: item.content["element_type"].as_str().unwrap_or("").to_string(),
+                        element_type: item.content["element_type"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string(),
                         raw_content: item.content,
                     };
                     ui_data.push(ui_item);
@@ -403,30 +417,28 @@ pub async fn fetch_screenpipe_data_with_offset(start_offset: u64) -> Result<Expo
                 _ => {}
             }
         }
-        
-        has_more = screenpipe_response.pagination.offset + screenpipe_response.pagination.limit < screenpipe_response.pagination.total;
+
+        has_more = screenpipe_response.pagination.offset + screenpipe_response.pagination.limit
+            < screenpipe_response.pagination.total;
         offset += limit;
-        
+
         // Safety check to prevent infinite loops
         if offset > 10000 {
             println!("Reached maximum offset, stopping fetch");
             break;
         }
     }
-    
+
     let now = SystemTime::now();
-    let export_date = now
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    
+    let export_date = now.duration_since(UNIX_EPOCH).unwrap().as_secs();
+
     let metadata = ExportMetadata {
         export_date: export_date.to_string(),
         start_date: start_offset.to_string(),
         end_date: export_date.to_string(),
         total_items: total_items_known as usize,
     };
-    
+
     Ok(ExportData {
         ocr: ocr_data,
         audio: audio_data,
@@ -436,30 +448,34 @@ pub async fn fetch_screenpipe_data_with_offset(start_offset: u64) -> Result<Expo
     })
 }
 
-pub async fn fetch_screenpipe_data_with_query_and_offset(query: serde_json::Value, start_offset: u64) -> Result<ExportData, String> {
+pub async fn fetch_screenpipe_data_with_query_and_offset(
+    query: serde_json::Value,
+    start_offset: u64,
+) -> Result<ExportData, String> {
     let client = Client::new();
-    
+
     let mut all_data = Vec::new();
     let mut ocr_data = Vec::new();
     let mut audio_data = Vec::new();
     let mut ui_data = Vec::new();
-    
+
     let mut offset = start_offset;
     let limit = 100;
     let mut has_more = true;
     let mut total_items_known = 0u64;
-    
+
     // Extract query parameters
     let content_type = query["content_type"].as_str();
     let start_time = query["start_time"].as_str();
     let end_time = query["end_time"].as_str();
-    
+
     while has_more {
         let mut url = format!(
             "http://localhost:3030/search?content_type=ocr&limit={}&offset={}",
-            limit, offset / 10
+            limit,
+            offset / 10
         );
-        
+
         // Add optional query parameters
         if let Some(ct) = content_type {
             url.push_str(&format!("&content_type={}", ct));
@@ -470,10 +486,10 @@ pub async fn fetch_screenpipe_data_with_query_and_offset(query: serde_json::Valu
         if let Some(et) = end_time {
             url.push_str(&format!("&end_time={}", et));
         }
-        
+
         println!("Fetching data from offset {}: {}", offset, url);
-        
-                let response = client
+
+        let response = client
             .get(&url)
             .send()
             .await
@@ -487,29 +503,32 @@ pub async fn fetch_screenpipe_data_with_query_and_offset(query: serde_json::Valu
             .text()
             .await
             .map_err(|e| format!("Failed to read response: {}", e))?;
-        
+
         let screenpipe_response: ScreenPipeResponse = serde_json::from_str(&response_text)
             .map_err(|e| format!("Failed to parse JSON: {}", e))?;
-        
+
         // Update total items known
         total_items_known = screenpipe_response.pagination.total;
-        
+
         // If no data returned, we're done
         if screenpipe_response.data.is_empty() {
             // has_more = false;
             break;
         }
-        
+
         for item in screenpipe_response.data {
             all_data.push(item.content.clone());
-            
+
             match item.content_type.to_lowercase().as_str() {
                 "ocr" => {
                     if let Some(text) = item.content["text"].as_str() {
                         let ocr_item = OcrData {
                             text: text.to_string(),
                             app_name: item.content["app_name"].as_str().unwrap_or("").to_string(),
-                            window_name: item.content["window_name"].as_str().unwrap_or("").to_string(),
+                            window_name: item.content["window_name"]
+                                .as_str()
+                                .unwrap_or("")
+                                .to_string(),
                             timestamp: item.content["timestamp"].as_str().unwrap_or("").to_string(),
                             raw_content: item.content,
                         };
@@ -520,7 +539,10 @@ pub async fn fetch_screenpipe_data_with_query_and_offset(query: serde_json::Valu
                     if let Some(transcription) = item.content["transcription"].as_str() {
                         let audio_item = AudioData {
                             transcription: transcription.to_string(),
-                            speaker_id: item.content["speaker_id"].as_str().unwrap_or("").to_string(),
+                            speaker_id: item.content["speaker_id"]
+                                .as_str()
+                                .unwrap_or("")
+                                .to_string(),
                             raw_content: item.content,
                         };
                         audio_data.push(audio_item);
@@ -528,7 +550,10 @@ pub async fn fetch_screenpipe_data_with_query_and_offset(query: serde_json::Valu
                 }
                 "ui" => {
                     let ui_item = UiData {
-                        element_type: item.content["element_type"].as_str().unwrap_or("").to_string(),
+                        element_type: item.content["element_type"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string(),
                         raw_content: item.content,
                     };
                     ui_data.push(ui_item);
@@ -536,30 +561,28 @@ pub async fn fetch_screenpipe_data_with_query_and_offset(query: serde_json::Valu
                 _ => {}
             }
         }
-        
-        has_more = screenpipe_response.pagination.offset + screenpipe_response.pagination.limit < screenpipe_response.pagination.total;
+
+        has_more = screenpipe_response.pagination.offset + screenpipe_response.pagination.limit
+            < screenpipe_response.pagination.total;
         offset += limit;
-        
+
         // Safety check to prevent infinite loops
         if offset > 10000 {
             println!("Reached maximum offset, stopping fetch");
             break;
         }
     }
-    
+
     let now = SystemTime::now();
-    let export_date = now
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    
+    let export_date = now.duration_since(UNIX_EPOCH).unwrap().as_secs();
+
     let metadata = ExportMetadata {
         export_date: export_date.to_string(),
         start_date: start_time.unwrap_or(&start_offset.to_string()).to_string(),
         end_date: end_time.unwrap_or(&export_date.to_string()).to_string(),
         total_items: total_items_known as usize,
     };
-    
+
     Ok(ExportData {
         ocr: ocr_data,
         audio: audio_data,
@@ -567,4 +590,4 @@ pub async fn fetch_screenpipe_data_with_query_and_offset(query: serde_json::Valu
         all: all_data,
         metadata,
     })
-} 
+}

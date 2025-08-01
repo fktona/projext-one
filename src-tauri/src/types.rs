@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct SystemCheckResult {
@@ -169,4 +169,4 @@ pub struct AppCategory {
     pub name: String,
     pub count: usize,
     pub apps: Vec<SystemApp>,
-} 
+}

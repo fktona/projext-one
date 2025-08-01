@@ -195,12 +195,13 @@ export default function Navbar() {
           showPluginPanel ? "translate-x-0" : "translate-x-full"
         }`}
         style={{ pointerEvents: showPluginPanel ? "auto" : "none" }}
-        onClick={() => setShowPluginPanel(false)}
+       
       >
         <div className="relative h-full">
           <button
             className=" top-6 right-8 z-50 text-white text-2xl bg-black rounded-full px-3 py-1 hover:bg-black/70 transition"
             aria-label="Close plugin panel"
+            onClick={() => setShowPluginPanel(false)}
           >
             ×
           </button>

@@ -59,8 +59,7 @@ export default function PluginPanel({ onPluginClick }: PluginPanelProps) {
                   </div>
                 </div>
                 <div className="flex items-center justify-between w-full mt-auto">
-                  <button 
-                      onClick={onPluginClick} className="text-[#BFBBFF] text-sm font-medium bg-transparent border-none p-0 hover:underline">
+                  <button className="text-[#BFBBFF] text-sm font-medium bg-transparent border-none p-0 hover:underline">
                     <Link
                       href={
                         plugin.status === "pending"

@@ -29,6 +29,9 @@ base64 = "0.21"
 uuid = { version = "1.0", features = ["v4"] }
 
 [features]
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 # by default Tauri runs in production mode
 # when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
 # when `tauri build` runs it is executed with `cargo build --release` if `devPath` is an URL

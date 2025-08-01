@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ${{ matrix.platform }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev \
+            build-essential \
+            curl \
+            wget \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install dependencies (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          brew install openssl
+
+      - name: Install dependencies (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          winget install Microsoft.VisualStudio.2022.BuildTools
+          winget install Microsoft.VisualStudio.2022.Workload.VCTools
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
+
+      - name: Install project dependencies
+        run: npm install
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Generate signing key
+        run: |
+          mkdir -p ~/.tauri
+          echo "${{ secrets.TAURI_PRIVATE_KEY }}" > ~/.tauri/tauri-key.pem
+          chmod 600 ~/.tauri/tauri-key.pem
+
+      - name: Build Tauri app
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+        run: npm run tauri build
+
+      - name: Generate latest.json with signatures
+        run: |
+          # Get the version from tauri.conf.json
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          
+          # Function to get signature for a file
+          get_signature() {
+            local file_path="$1"
+            if [ -f "$file_path" ]; then
+              # Use Tauri CLI to sign the file and get signature
+              tauri signer sign "$file_path" | grep -o 'signature: .*' | cut -d' ' -f2
+            else
+              echo "PLACEHOLDER_SIGNATURE"
+            fi
+          }
+          
+          # Find and sign the built files
+          DMG_X64=$(find src-tauri/target/release/bundle -name "*_x64.dmg" -type f | head -1)
+          DMG_ARM64=$(find src-tauri/target/release/bundle -name "*_arm64.dmg" -type f | head -1)
+          APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" -type f | head -1)
+          EXE=$(find src-tauri/target/release/bundle -name "*.exe" -type f | head -1)
+          
+          # Get signatures
+          DMG_X64_SIG=$(get_signature "$DMG_X64")
+          DMG_ARM64_SIG=$(get_signature "$DMG_ARM64")
+          APPIMAGE_SIG=$(get_signature "$APPIMAGE")
+          EXE_SIG=$(get_signature "$EXE")
+          
+          # Create latest.json with real signatures
+          cat > latest.json << EOF
+          {
+            "version": "$VERSION",
+            "notes": "Auto-generated release",
+            "pub_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "platforms": {
+                             "darwin-x86_64": {
+                 "signature": "$DMG_X64_SIG",
+                 "url": "https://github.com/fktona/projext-one/releases/latest/download/Project-One_${VERSION}_x64.dmg"
+               },
+               "darwin-aarch64": {
+                 "signature": "$DMG_ARM64_SIG",
+                 "url": "https://github.com/fktona/projext-one/releases/latest/download/Project-One_${VERSION}_arm64.dmg"
+               },
+               "linux-x86_64": {
+                 "signature": "$APPIMAGE_SIG",
+                 "url": "https://github.com/fktona/projext-one/releases/latest/download/Project-One_${VERSION}_amd64.AppImage"
+               },
+               "windows-x86_64": {
+                 "signature": "$EXE_SIG",
+                 "url": "https://github.com/fktona/projext-one/releases/latest/download/Project-One_${VERSION}_x64-setup.exe"
+               }
+            }
+          }
+          EOF
+          
+          echo "Generated latest.json with signatures:"
+          cat latest.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.platform }}
+          path: src-tauri/target/release/bundle/
+
+              - name: Create Release
+          if: matrix.platform == 'ubuntu-latest'
+          uses: softprops/action-gh-release@v1
+          with:
+            files: |
+              src-tauri/target/release/bundle/**/*.deb
+              src-tauri/target/release/bundle/**/*.AppImage
+              src-tauri/target/release/bundle/**/*.dmg
+              src-tauri/target/release/bundle/**/*.msi
+              src-tauri/target/release/bundle/**/*.exe
+              latest.json
+            draft: false
+            prerelease: false
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

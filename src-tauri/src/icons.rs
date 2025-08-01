@@ -1,7 +1,7 @@
-use std::path::Path;
-use serde::{Serialize, Deserialize};
 use anyhow::Result;
 use base64::Engine;
+use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Serialize, Deserialize)]
 pub struct AppIconQuery {
@@ -39,10 +39,10 @@ pub async fn get_app_icon(app_name: &str, app_path: Option<&str>) -> Result<Opti
 
 #[cfg(target_os = "windows")]
 async fn get_windows_app_icon(app_name: &str, app_path: Option<&str>) -> Result<Option<AppIcon>> {
-    use std::process::Command;
-    use std::io::Read;
     use std::fs::File;
-    
+    use std::io::Read;
+    use std::process::Command;
+
     // Try to find the executable path
     let exe_path = if let Some(path) = app_path {
         path.to_string()
@@ -51,10 +51,14 @@ async fn get_windows_app_icon(app_name: &str, app_path: Option<&str>) -> Result<
         let common_paths = vec![
             format!("C:\\Program Files\\{}\\{}.exe", app_name, app_name),
             format!("C:\\Program Files (x86)\\{}\\{}.exe", app_name, app_name),
-            format!("C:\\Users\\{}\\AppData\\Local\\{}\\{}.exe", 
-                   std::env::var("USERNAME").unwrap_or_default(), app_name, app_name),
+            format!(
+                "C:\\Users\\{}\\AppData\\Local\\{}\\{}.exe",
+                std::env::var("USERNAME").unwrap_or_default(),
+                app_name,
+                app_name
+            ),
         ];
-        
+
         let mut found_path = None;
         for path in common_paths {
             if Path::new(&path).exists() {
@@ -62,7 +66,7 @@ async fn get_windows_app_icon(app_name: &str, app_path: Option<&str>) -> Result<
                 break;
             }
         }
-        
+
         found_path.ok_or_else(|| anyhow::anyhow!("Could not find executable for {}", app_name))?
     };
 
@@ -108,7 +112,7 @@ async fn get_windows_app_icon(app_name: &str, app_path: Option<&str>) -> Result<
         let mut file = File::open(default_icon_path)?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
-        
+
         // This is a simplified approach - in practice you'd need proper PE parsing
         return Ok(Some(AppIcon {
             data: buffer,
@@ -122,7 +126,7 @@ async fn get_windows_app_icon(app_name: &str, app_path: Option<&str>) -> Result<
 #[cfg(target_os = "macos")]
 async fn get_macos_app_icon(app_name: &str, app_path: Option<&str>) -> Result<Option<AppIcon>> {
     use std::process::Command;
-    
+
     // Try to find the app bundle
     let app_bundle_path = if let Some(path) = app_path {
         path.to_string()
@@ -133,7 +137,7 @@ async fn get_macos_app_icon(app_name: &str, app_path: Option<&str>) -> Result<Op
             format!("/Applications/{}.app", app_name.replace(" ", "")),
             format!("/System/Applications/{}.app", app_name),
         ];
-        
+
         let mut found_path = None;
         for path in common_paths {
             if Path::new(&path).exists() {
@@ -141,23 +145,30 @@ async fn get_macos_app_icon(app_name: &str, app_path: Option<&str>) -> Result<Op
                 break;
             }
         }
-        
+
         found_path.ok_or_else(|| anyhow::anyhow!("Could not find app bundle for {}", app_name))?
     };
 
     // Use sips to extract icon
     let icon_path = format!("{}/Contents/Resources/AppIcon.icns", app_bundle_path);
-    
+
     if Path::new(&icon_path).exists() {
         // Convert ICNS to PNG using sips
         let output = Command::new("sips")
-            .args(&["-s", "format", "png", "--out", "/tmp/temp_icon.png", &icon_path])
+            .args(&[
+                "-s",
+                "format",
+                "png",
+                "--out",
+                "/tmp/temp_icon.png",
+                &icon_path,
+            ])
             .output()?;
 
         if output.status.success() {
             let icon_data = std::fs::read("/tmp/temp_icon.png")?;
             let _ = std::fs::remove_file("/tmp/temp_icon.png"); // Clean up
-            
+
             return Ok(Some(AppIcon {
                 data: icon_data,
                 format: "png".to_string(),
@@ -171,7 +182,7 @@ async fn get_macos_app_icon(app_name: &str, app_path: Option<&str>) -> Result<Op
 #[cfg(target_os = "linux")]
 async fn get_linux_app_icon(app_name: &str, _app_path: Option<&str>) -> Result<Option<AppIcon>> {
     use std::process::Command;
-    
+
     // Try to find icon in common locations
     let icon_paths = vec![
         format!("/usr/share/icons/hicolor/256x256/apps/{}.png", app_name),
@@ -185,8 +196,12 @@ async fn get_linux_app_icon(app_name: &str, _app_path: Option<&str>) -> Result<O
     for icon_path in icon_paths {
         if Path::new(&icon_path).exists() {
             let icon_data = std::fs::read(&icon_path)?;
-            let format = if icon_path.ends_with(".png") { "png" } else { "xpm" };
-            
+            let format = if icon_path.ends_with(".png") {
+                "png"
+            } else {
+                "xpm"
+            };
+
             return Ok(Some(AppIcon {
                 data: icon_data,
                 format: format.to_string(),
@@ -198,8 +213,11 @@ async fn get_linux_app_icon(app_name: &str, _app_path: Option<&str>) -> Result<O
     let desktop_paths = vec![
         format!("/usr/share/applications/{}.desktop", app_name),
         format!("/usr/local/share/applications/{}.desktop", app_name),
-        format!("{}/.local/share/applications/{}.desktop", 
-               std::env::var("HOME").unwrap_or_default(), app_name),
+        format!(
+            "{}/.local/share/applications/{}.desktop",
+            std::env::var("HOME").unwrap_or_default(),
+            app_name
+        ),
     ];
 
     for desktop_path in desktop_paths {
@@ -214,7 +232,7 @@ async fn get_linux_app_icon(app_name: &str, _app_path: Option<&str>) -> Result<O
                             format!("/usr/share/icons/hicolor/128x128/apps/{}.png", icon_name),
                             format!("/usr/share/pixmaps/{}.png", icon_name),
                         ];
-                        
+
                         for icon_file_path in icon_file_paths {
                             if Path::new(&icon_file_path).exists() {
                                 let icon_data = std::fs::read(&icon_file_path)?;
@@ -231,4 +249,4 @@ async fn get_linux_app_icon(app_name: &str, _app_path: Option<&str>) -> Result<O
     }
 
     Ok(None)
-} 
+}

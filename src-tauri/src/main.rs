@@ -1,14 +1,14 @@
 #![cfg_attr(
-  all(not(debug_assertions), target_os = "windows"),
-  windows_subsystem = "windows"
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
 )]
 
 use serde_json;
 use std::thread;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
-use std::process::Command;
 use base64::Engine;
+use std::process::Command;
 
 // Import modules
 mod ai;
@@ -24,8 +24,7 @@ mod types;
 use ai::{call_ai_with_agent_async, prepare_ai_context_rag, TimeRange};
 use app_discovery::AppDiscovery;
 use export::{get_export_files, get_export_status};
-use install::{install_ollama_model, install_screenpipe};
-
+use install::{install_ollama, install_ollama_model, install_screenpipe};
 
 #[tauri::command]
 fn ping() -> String {
@@ -37,12 +36,12 @@ fn ping() -> String {
 fn get_ollama_models_cmd() -> Result<Vec<String>, String> {
     // Run Ollama models check in background thread to avoid blocking UI
     let (tx, rx) = std::sync::mpsc::channel();
-    
+
     thread::spawn(move || {
         let result = system::get_ollama_models();
         let _ = tx.send(result);
     });
-    
+
     // Wait for result with timeout to prevent hanging
     match rx.recv_timeout(std::time::Duration::from_secs(5)) {
         Ok(result) => Ok(result),
@@ -56,20 +55,25 @@ fn install_screenpipe_cmd() -> Result<String, String> {
 }
 
 #[tauri::command]
-fn install_ollama_model_cmd(model: String) -> Result<String, String> {
-    install_ollama_model(model)
+fn install_ollama_cmd(app_handle: tauri::AppHandle) -> Result<String, String> {
+    install_ollama(&app_handle)
+}
+
+#[tauri::command]
+fn install_ollama_model_cmd(model: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+    install_ollama_model(model, &app_handle)
 }
 
 #[tauri::command]
 fn check_system_requirements_cmd() -> Result<types::SystemCheckResult, String> {
     // Run system check in background thread to avoid blocking UI
     let (tx, rx) = std::sync::mpsc::channel();
-    
+
     thread::spawn(move || {
         let result = system::check_system_requirements_async();
         let _ = tx.send(result);
     });
-    
+
     // Wait for result with timeout to prevent hanging
     match rx.recv_timeout(std::time::Duration::from_secs(10)) {
         Ok(result) => Ok(result),
@@ -79,8 +83,8 @@ fn check_system_requirements_cmd() -> Result<types::SystemCheckResult, String> {
 
 #[tauri::command]
 fn start_background_export(
-    app_handle: tauri::AppHandle,
-    query: Option<serde_json::Value>,
+    _app_handle: tauri::AppHandle,
+    _query: Option<serde_json::Value>,
 ) -> Result<String, String> {
     // Background export is currently disabled
     Ok("Background export is currently disabled".to_string())
@@ -111,14 +115,18 @@ async fn analyze_data_with_ai(
     println!("Agent Type: {}", agent_type);
 
     // Convert string to TimeRange enum
-    let time_range_enum = match time_range.as_str() {
-        "daily" => TimeRange::Daily,
-        "weekly" => TimeRange::Weekly,
-        "monthly" => TimeRange::Monthly,
-        "yearly" => TimeRange::Yearly,
-        "all_time" => TimeRange::AllTime,
-        _ => return Err(format!("Invalid time range: {}. Must be one of: daily, weekly, monthly, yearly, all_time", time_range)),
-    };
+    let time_range_enum =
+        match time_range.as_str() {
+            "daily" => TimeRange::Daily,
+            "weekly" => TimeRange::Weekly,
+            "monthly" => TimeRange::Monthly,
+            "yearly" => TimeRange::Yearly,
+            "all_time" => TimeRange::AllTime,
+            _ => return Err(format!(
+                "Invalid time range: {}. Must be one of: daily, weekly, monthly, yearly, all_time",
+                time_range
+            )),
+        };
 
     // Perform AI analysis in a separate thread to avoid blocking
     let app_handle_clone = app_handle.clone();
@@ -128,9 +136,11 @@ async fn analyze_data_with_ai(
             .enable_all()
             .build()
             .unwrap();
-        
+
         rt.block_on(async {
-            if let Err(e) = perform_ai_analysis(&app_handle_clone, message, time_range_enum, agent_type).await {
+            if let Err(e) =
+                perform_ai_analysis(&app_handle_clone, message, time_range_enum, agent_type).await
+            {
                 let _ = app_handle_clone.emit(
                     "ai-response",
                     serde_json::json!({
@@ -218,14 +228,10 @@ fn get_video_file(filename: String) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 fn start_screenpipe_cmd() -> Result<String, String> {
-    // Start ScreenPipe in the background
-    let output = Command::new("screenpipe")
-        .arg("start")
-        .spawn();
-    
-    match output {
-        Ok(_) => Ok("ScreenPipe started successfully".to_string()),
-        Err(e) => Err(format!("Failed to start ScreenPipe: {}", e)),
+    match system::start_screenpipe() {
+        Ok(true) => Ok("ScreenPipe started successfully".to_string()),
+        Ok(false) => Err("ScreenPipe failed to start".to_string()),
+        Err(e) => Err(e),
     }
 }
 
@@ -273,7 +279,8 @@ async fn perform_ai_analysis(
     println!("[AI] DEBUG: prepare_ai_context_rag completed successfully");
     println!("[AI] RAG context prepared successfully");
 
-    let prompt = format!(r#"You are an assistant secretary. When answering, provide polished, professional summaries and responses as if you are briefing an executive. Do not reference how you know the information, the user, or any context or data source. Simply present the information as a knowledgeable assistant secretary would, focusing on clarity, professionalism, and helpfulness.
+    let prompt = format!(
+        r#"You are an assistant secretary. When answering, provide polished, professional summaries and responses as if you are briefing an executive. Do not reference how you know the information, the user, or any context or data source. Simply present the information as a knowledgeable assistant secretary would, focusing on clarity, professionalism, and helpfulness.
 
 If asked for a summary of activities, list the applications, tasks, or events in a clear and concise manner. If asked for details, provide them directly and succinctly. If information is not available, state so politely and professionally.
 
@@ -284,7 +291,8 @@ SUMMARY DATA:
 
 QUESTION:
 {user_message}
-"#);
+"#
+    );
 
     println!("[AI] Calling AI with agent-specific analysis...");
     println!("[AI] DEBUG: About to call call_ai_with_agent_async");
@@ -317,9 +325,15 @@ QUESTION:
 }
 
 #[tauri::command]
-async fn get_app_icon_handler(app_name: String, app_path: Option<String>) -> Result<serde_json::Value, String> {
-    println!("Received app icon request: app_name={:?}, app_path={:?}", app_name, app_path);
-    
+async fn get_app_icon_handler(
+    app_name: String,
+    app_path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    println!(
+        "Received app icon request: app_name={:?}, app_path={:?}",
+        app_name, app_path
+    );
+
     #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     {
         match icons::get_app_icon(&app_name, app_path.as_deref()).await {
@@ -376,7 +390,8 @@ async fn query_rag_system_cmd(
     custom_query: Option<String>,
     time_range: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    match rag::query_rag_system(query, top_k, similarity_threshold, custom_query, time_range).await {
+    match rag::query_rag_system(query, top_k, similarity_threshold, custom_query, time_range).await
+    {
         Ok(response) => {
             let json_response = serde_json::to_value(response)
                 .map_err(|e| format!("Failed to serialize RAG response: {}", e))?;
@@ -407,7 +422,10 @@ async fn get_rag_stats_cmd() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-async fn ingest_sql_data_rag(time_range: Option<String>, sql_query: Option<String>) -> Result<String, String> {
+async fn ingest_sql_data_rag(
+    time_range: Option<String>,
+    sql_query: Option<String>,
+) -> Result<String, String> {
     match rag::ingest_sql_data_rag(time_range, sql_query).await {
         Ok(result) => Ok(result),
         Err(e) => Err(format!("Failed to ingest SQL data: {}", e)),
@@ -416,40 +434,47 @@ async fn ingest_sql_data_rag(time_range: Option<String>, sql_query: Option<Strin
 
 #[tauri::command]
 async fn deep_analysis_rag(
-    sql_query: String, 
+    sql_query: String,
     analysis_query: String,
     top_k: Option<usize>,
-    similarity_threshold: Option<f32>
-    
+    similarity_threshold: Option<f32>,
 ) -> Result<String, String> {
     // First, initialize RAG system
     match rag::initialize_rag().await {
         Ok(_) => (),
         Err(e) => return Err(format!("Failed to initialize RAG: {}", e)),
     }
-    
+
     // Clear existing data and ingest new data
     match rag::clear_rag_data().await {
         Ok(_) => (),
         Err(e) => return Err(format!("Failed to clear RAG data: {}", e)),
     }
-    
+
     // Ingest the SQL data into RAG system
     match rag::ingest_sql_data_rag(Some(sql_query), None).await {
         Ok(_) => (),
         Err(e) => return Err(format!("Failed to ingest SQL data: {}", e)),
     }
-    
+
     // Query the RAG system for analysis
     let top_k = top_k.unwrap_or(10);
     let similarity_threshold = similarity_threshold.unwrap_or(0.3);
-    
-    match rag::query_rag_system(analysis_query, Some(top_k), Some(similarity_threshold), None, None).await {
+
+    match rag::query_rag_system(
+        analysis_query,
+        Some(top_k),
+        Some(similarity_threshold),
+        None,
+        None,
+    )
+    .await
+    {
         Ok(response) => {
             // Serialize the RAGResponse to JSON string for the frontend
             serde_json::to_string(&response)
                 .map_err(|e| format!("Failed to serialize RAG response: {}", e))
-        },
+        }
         Err(e) => Err(format!("Failed to query RAG system: {}", e)),
     }
 }
@@ -457,14 +482,14 @@ async fn deep_analysis_rag(
 #[tauri::command]
 async fn pure_rust_analysis(
     start_time: Option<String>,
-    end_time: Option<String>
+    end_time: Option<String>,
 ) -> Result<String, String> {
     let time_range = if let (Some(start), Some(end)) = (start_time, end_time) {
         Some((start, end))
     } else {
         None
     };
-    
+
     match rag::perform_pure_rust_analysis(time_range).await {
         Ok(analysis) => Ok(analysis),
         Err(e) => Err(format!("Failed to perform pure Rust analysis: {}", e)),
@@ -475,38 +500,38 @@ async fn pure_rust_analysis(
 async fn quick_action_rag(
     action_type: String,
     time_range: String,
-    custom_prompt: Option<String>
+    custom_prompt: Option<String>,
 ) -> Result<String, String> {
     println!("=== QUICK ACTION RAG DEBUG ===");
     println!("Action Type: {}", action_type);
     println!("Time Range: {}", time_range);
     println!("Custom Prompt: {:?}", custom_prompt);
-    
+
     // Initialize RAG system
     match rag::initialize_rag().await {
         Ok(_) => println!("RAG system initialized successfully"),
         Err(e) => return Err(format!("Failed to initialize RAG: {}", e)),
     }
-    
+
     // Clear existing data
     match rag::clear_rag_data().await {
         Ok(_) => println!("RAG data cleared successfully"),
         Err(e) => return Err(format!("Failed to clear RAG data: {}", e)),
     }
-    
+
     // Build SQL query based on time range
     let sql_query = time_range.clone();
-    
+
     println!("Final SQL Query:");
     println!("{}", sql_query);
     println!("=== END DEBUG ===");
-    
+
     // Ingest the SQL data into RAG system
     match rag::ingest_sql_data_rag(Some(sql_query), None).await {
         Ok(_) => (),
         Err(e) => return Err(format!("Failed to ingest SQL data: {}", e)),
     }
-    
+
     // Build analysis query based on action type with time range context
     let analysis_query = match action_type.as_str() {
         "meeting_analysis" => format!("Analyze all meeting activities for the time period: {}. Look for meeting durations, participants, topics discussed, and any important decisions or action items from meetings.", time_range),
@@ -545,13 +570,13 @@ async fn quick_action_rag(
             }
         }
     };
-    
+
     // Query the RAG system for analysis
     match rag::query_rag_system(analysis_query.to_string(), Some(10), Some(0.1), None, None).await {
         Ok(response) => {
             // Return just the answer from the RAG response
             Ok(response.answer)
-        },
+        }
         Err(e) => Err(format!("Failed to query RAG system: {}", e)),
     }
 }
@@ -591,6 +616,19 @@ async fn get_app_categories() -> Result<Vec<String>, String> {
     Ok(discovery_result.categories)
 }
 
+// System tray setup function
+
+
+#[tauri::command]
+async fn check_for_updates() -> Result<serde_json::Value, String> {
+    // This is a placeholder for manual update checking
+    // The actual update checking is handled by the frontend
+    Ok(serde_json::json!({
+        "status": "checking",
+        "message": "Update check initiated"
+    }))
+}
+
 #[tauri::command]
 async fn get_deep_app_usage_analytics(time_range: String) -> Result<serde_json::Value, String> {
     // Convert time range string to TimeRange enum
@@ -600,7 +638,11 @@ async fn get_deep_app_usage_analytics(time_range: String) -> Result<serde_json::
         "monthly" => TimeRange::Monthly,
         "yearly" => TimeRange::Yearly,
         "all_time" => TimeRange::AllTime,
-        _ => return Err("Invalid time range. Use: daily, weekly, monthly, yearly, all_time".to_string()),
+        _ => {
+            return Err(
+                "Invalid time range. Use: daily, weekly, monthly, yearly, all_time".to_string(),
+            )
+        }
     };
 
     // Build comprehensive SQL query for app usage analytics
@@ -702,19 +744,26 @@ async fn get_deep_app_usage_analytics(time_range: String) -> Result<serde_json::
         .map_err(|e| format!("Failed to send SQL query: {}", e))?;
 
     if !response.status().is_success() {
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(format!("SQL API error: {}", error_text));
     }
 
-    let analytics_data: Vec<serde_json::Value> = response.json().await
+    let analytics_data: Vec<serde_json::Value> = response
+        .json()
+        .await
         .map_err(|e| format!("Failed to parse SQL response: {}", e))?;
 
     // Calculate summary statistics
     let total_apps = analytics_data.len();
-    let total_events = analytics_data.iter()
+    let total_events = analytics_data
+        .iter()
         .map(|app| app["usage_count"].as_u64().unwrap_or(0))
         .sum::<u64>();
-    let total_duration = analytics_data.iter()
+    let total_duration = analytics_data
+        .iter()
         .map(|app| app["total_duration_ms"].as_f64().unwrap_or(0.0))
         .sum::<f64>();
 
@@ -724,15 +773,18 @@ async fn get_deep_app_usage_analytics(time_range: String) -> Result<serde_json::
         let category = app["category"].as_str().unwrap_or("Other");
         let usage_count = app["usage_count"].as_u64().unwrap_or(0);
         let duration = app["total_duration_ms"].as_f64().unwrap_or(0.0);
-        
-        let entry = category_stats.entry(category).or_insert((0, 0.0, Vec::new()));
+
+        let entry = category_stats
+            .entry(category)
+            .or_insert((0, 0.0, Vec::new()));
         entry.0 += usage_count;
         entry.1 += duration;
         entry.2.push(app.clone());
     }
 
     // Convert to sorted vector
-    let mut category_summary: Vec<serde_json::Value> = category_stats.iter()
+    let mut category_summary: Vec<serde_json::Value> = category_stats
+        .iter()
         .map(|(category, (count, duration, apps))| {
             serde_json::json!({
                 "category": category,
@@ -745,7 +797,10 @@ async fn get_deep_app_usage_analytics(time_range: String) -> Result<serde_json::
         .collect();
 
     category_summary.sort_by(|a, b| {
-        b["usage_count"].as_u64().unwrap_or(0).cmp(&a["usage_count"].as_u64().unwrap_or(0))
+        b["usage_count"]
+            .as_u64()
+            .unwrap_or(0)
+            .cmp(&a["usage_count"].as_u64().unwrap_or(0))
     });
 
     let result = serde_json::json!({
@@ -767,14 +822,16 @@ async fn get_deep_app_usage_analytics(time_range: String) -> Result<serde_json::
 fn main() {
     std::env::set_var("OPENAI_API_KEY", "");
     let context = tauri::generate_context!();
-    
+
     // Add better error handling for WebView2 initialization
     match tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ping,
             check_system_requirements_cmd,
             get_ollama_models_cmd,
             install_screenpipe_cmd,
+            install_ollama_cmd,
             install_ollama_model_cmd,
             start_background_export,
             stop_background_export,
@@ -808,17 +865,31 @@ fn main() {
             get_running_apps,
             get_app_categories,
             // Analytics commands
-            get_deep_app_usage_analytics
+            get_deep_app_usage_analytics,
+            // Update commands
+            check_for_updates
         ])
-        .setup(|_app| {
+        .setup(|app| {
             // Background export is currently disabled
             // let app_handle = app.handle();
             // thread::spawn(move || {
             //     background_export_loop(app_handle, None); // Initial call with default query
             // });
+
+            // Set up window close behavior to hide instead of quit
+            let window = app.get_webview_window("main").unwrap();
+            let window_clone = window.clone();
+            let _ = window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    window_clone.hide().unwrap();
+                }
+            });
+
             Ok(())
         })
-        .run(context) {
+        .run(context)
+    {
         Ok(_) => println!("Tauri application exited successfully"),
         Err(e) => {
             eprintln!("Failed to run Tauri application: {}", e);
@@ -829,6 +900,3 @@ fn main() {
         }
     }
 }
-
-
-  

@@ -1,12 +1,12 @@
-use std::sync::{Arc, Mutex};
 use reqwest::Client;
+use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 
-use crate::types::{OpenAIRequest, OpenAIMessage, OpenAIResponse};
-use crate::rag::{RAGQuery, query_rag_system, ingest_sql_data_rag};
+use crate::rag::{ingest_sql_data_rag, query_rag_system, RAGQuery};
+use crate::types::{OpenAIMessage, OpenAIRequest, OpenAIResponse};
 
 // Global state for storing selected model
-static SELECTED_MODEL: once_cell::sync::Lazy<Arc<Mutex<Option<String>>>> = 
+static SELECTED_MODEL: once_cell::sync::Lazy<Arc<Mutex<Option<String>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
 // Ollama API request structure
@@ -82,7 +82,10 @@ pub async fn call_ollama_with_model_async(prompt: &str, model: &str) -> Result<S
         .map_err(|e| format!("Failed to send request to Ollama: {}", e))?;
 
     if !response.status().is_success() {
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         println!("[OLLAMA] DEBUG: Ollama API error: {}", error_text);
         return Err(format!("Ollama API error: {}", error_text));
     }
@@ -92,27 +95,31 @@ pub async fn call_ollama_with_model_async(prompt: &str, model: &str) -> Result<S
         .await
         .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
 
-    println!("[OLLAMA] DEBUG: Ollama API response length: {} characters", response_body.response.len());
+    println!(
+        "[OLLAMA] DEBUG: Ollama API response length: {} characters",
+        response_body.response.len()
+    );
     Ok(response_body.response.trim().to_string())
 }
 
 // Synchronous wrapper for compatibility
 pub fn call_ollama_with_model(prompt: &str, model: &str) -> Result<String, String> {
-    let rt = tokio::runtime::Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?;
     rt.block_on(call_ollama_with_model_async(prompt, model))
 }
 
 // Function to check if Ollama is running
 pub fn check_ollama_status() -> Result<bool, String> {
     use reqwest::blocking::Client as BlockingClient;
-    
+
     let client = BlockingClient::new();
-    
+
     let response = client
         .get("http://localhost:11434/api/tags")
         .timeout(std::time::Duration::from_secs(5)) // 5 second timeout
         .send();
-    
+
     match response {
         Ok(resp) => Ok(resp.status().is_success()),
         Err(_) => Ok(false), // Ollama not running
@@ -121,16 +128,14 @@ pub fn check_ollama_status() -> Result<bool, String> {
 
 pub fn call_openai(prompt: &str) -> Result<String, String> {
     // Use the provided key if present, otherwise check env
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_|
-        "".to_string()
-    );
+    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "".to_string());
     // Set env for future calls
     std::env::set_var("OPENAI_API_KEY", &api_key);
-    
+
     use reqwest::blocking::Client as BlockingClient;
-    
+
     let client = BlockingClient::new();
-    
+
     let request_body = OpenAIRequest {
         model: "gpt-4o-mini".to_string(),
         messages: vec![
@@ -165,7 +170,7 @@ Always be supportive and make them feel understood. You're here to help them und
         max_tokens: 2000,
         temperature: 0.7,
     };
-    
+
     let response = client
         .post("https://api.openai.com/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", api_key))
@@ -173,35 +178,35 @@ Always be supportive and make them feel understood. You're here to help them und
         .json(&request_body)
         .send()
         .map_err(|e| format!("Failed to send request to OpenAI: {}", e))?;
-    
+
     if !response.status().is_success() {
-        let error_text = response.text()
+        let error_text = response
+            .text()
             .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(format!("OpenAI API error: {}", error_text));
     }
-    
-    let response_body = response.json::<OpenAIResponse>()
+
+    let response_body = response
+        .json::<OpenAIResponse>()
         .map_err(|e| format!("Failed to parse OpenAI response: {}", e))?;
-    
+
     if response_body.choices.is_empty() {
         return Err("No response from OpenAI".to_string());
     }
-    
+
     Ok(response_body.choices[0].message.content.clone())
 }
 
 pub async fn call_openai_async(prompt: &str) -> Result<String, String> {
     // Use the provided key if present, otherwise check env
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_|
-        "".to_string()
-    );
+    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "".to_string());
     // Set env for future calls
     std::env::set_var("OPENAI_API_KEY", &api_key);
-    
+
     use reqwest::Client;
-    
+
     let client = Client::new();
-    
+
     let request_body = OpenAIRequest {
         model: "gpt-4o-mini".to_string(),
         messages: vec![
@@ -236,7 +241,7 @@ Always be supportive and make them feel understood. You're here to help them und
         max_tokens: 2000,
         temperature: 0.7,
     };
-    
+
     let response = client
         .post("https://api.openai.com/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", api_key))
@@ -245,20 +250,24 @@ Always be supportive and make them feel understood. You're here to help them und
         .send()
         .await
         .map_err(|e| format!("Failed to send request to OpenAI: {}", e))?;
-    
+
     if !response.status().is_success() {
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(format!("OpenAI API error: {}", error_text));
     }
-    
-    let response_body = response.json::<OpenAIResponse>()
+
+    let response_body = response
+        .json::<OpenAIResponse>()
         .await
         .map_err(|e| format!("Failed to parse OpenAI response: {}", e))?;
-    
+
     if response_body.choices.is_empty() {
         return Err("No response from OpenAI".to_string());
     }
-    
+
     Ok(response_body.choices[0].message.content.clone())
 }
 
@@ -267,35 +276,34 @@ pub fn call_openai_with_agent(prompt: &str, agent_type: &str) -> Result<String, 
     println!("[OPENAI] DEBUG: Agent type: {}", agent_type);
     println!("[OPENAI] DEBUG: Prompt length: {} characters", prompt.len());
     // Use the provided key if present, otherwise check env
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_|
-        "".to_string()
-    );
+    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "".to_string());
     std::env::set_var("OPENAI_API_KEY", &api_key);
-    
+
     println!("[OPENAI] DEBUG: OpenAI API key retrieved");
-    
+
     // For now, let's skip OpenAI and go directly to Ollama to avoid runtime conflicts
     println!("[OPENAI] DEBUG: Skipping OpenAI due to runtime conflicts, will use Ollama instead");
     Err("OpenAI temporarily disabled due to runtime conflicts".to_string())
 }
 
-pub async fn call_openai_with_agent_async(prompt: &str, agent_type: &str) -> Result<String, String> {
+pub async fn call_openai_with_agent_async(
+    prompt: &str,
+    agent_type: &str,
+) -> Result<String, String> {
     println!("[OPENAI] DEBUG: call_openai_with_agent_async started");
     println!("[OPENAI] DEBUG: Agent type: {}", agent_type);
     println!("[OPENAI] DEBUG: Prompt length: {} characters", prompt.len());
-    
+
     // Use the provided key if present, otherwise check env
-    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_|
-        "".to_string()
-    );
+    let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| "".to_string());
     std::env::set_var("OPENAI_API_KEY", &api_key);
-    
+
     println!("[OPENAI] DEBUG: OpenAI API key retrieved");
-    
+
     use reqwest::Client;
-    
+
     let client = Client::new();
-    
+
     // Customize system prompt based on agent type
     let system_content = match agent_type {
         "productivity" => "You are a productivity AI assistant analyzing digital activity data. Focus on time management, work efficiency, and productive habits. Provide actionable insights about productivity patterns and suggest improvements.",
@@ -324,7 +332,7 @@ When discussing their data:
 Always maintain a natural conversation flow. You're their personal AI companion who understands their digital life!",
         _ => "You are a helpful AI assistant analyzing digital activity data. Provide clear, insightful analysis based on the provided context."
     };
-    
+
     let request_body = OpenAIRequest {
         model: "gpt-4o-mini".to_string(),
         messages: vec![
@@ -340,7 +348,7 @@ Always maintain a natural conversation flow. You're their personal AI companion 
         max_tokens: 2000,
         temperature: 0.7,
     };
-    
+
     let response = client
         .post("https://api.openai.com/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", api_key))
@@ -349,20 +357,24 @@ Always maintain a natural conversation flow. You're their personal AI companion 
         .send()
         .await
         .map_err(|e| format!("Failed to send request to OpenAI: {}", e))?;
-    
+
     if !response.status().is_success() {
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(format!("OpenAI API error: {}", error_text));
     }
-    
-    let response_body = response.json::<OpenAIResponse>()
+
+    let response_body = response
+        .json::<OpenAIResponse>()
         .await
         .map_err(|e| format!("Failed to parse OpenAI response: {}", e))?;
-    
+
     if response_body.choices.is_empty() {
         return Err("No response from OpenAI".to_string());
     }
-    
+
     Ok(response_body.choices[0].message.content.clone())
 }
 
@@ -393,22 +405,34 @@ pub async fn call_ai_async(prompt: &str) -> Result<String, String> {
 pub fn call_ai_with_agent(prompt: &str, agent_type: &str) -> Result<String, String> {
     println!("[AI_AGENT] DEBUG: call_ai_with_agent started");
     println!("[AI_AGENT] DEBUG: Agent type: {}", agent_type);
-    println!("[AI_AGENT] DEBUG: Prompt length: {} characters", prompt.len());
-    
+    println!(
+        "[AI_AGENT] DEBUG: Prompt length: {} characters",
+        prompt.len()
+    );
+
     // Try OpenAI first, fallback to Ollama
     println!("[AI_AGENT] DEBUG: About to try OpenAI first");
     match call_openai_with_agent(prompt, agent_type) {
         Ok(response) => {
-            println!("[AI_AGENT] DEBUG: OpenAI succeeded, response length: {}", response.len());
+            println!(
+                "[AI_AGENT] DEBUG: OpenAI succeeded, response length: {}",
+                response.len()
+            );
             Ok(response)
         }
         Err(openai_error) => {
-            println!("[AI_AGENT] DEBUG: OpenAI failed: {}. Falling back to Ollama...", openai_error);
+            println!(
+                "[AI_AGENT] DEBUG: OpenAI failed: {}. Falling back to Ollama...",
+                openai_error
+            );
             println!("[AI_AGENT] DEBUG: About to call Ollama");
             let ollama_result = call_ollama(prompt);
             match &ollama_result {
                 Ok(response) => {
-                    println!("[AI_AGENT] DEBUG: Ollama succeeded, response length: {}", response.len());
+                    println!(
+                        "[AI_AGENT] DEBUG: Ollama succeeded, response length: {}",
+                        response.len()
+                    );
                 }
                 Err(e) => {
                     println!("[AI_AGENT] DEBUG: Ollama failed: {}", e);
@@ -422,24 +446,36 @@ pub fn call_ai_with_agent(prompt: &str, agent_type: &str) -> Result<String, Stri
 pub async fn call_ai_with_agent_async(prompt: &str, agent_type: &str) -> Result<String, String> {
     println!("[AI_AGENT] DEBUG: call_ai_with_agent_async started");
     println!("[AI_AGENT] DEBUG: Agent type: {}", agent_type);
-    println!("[AI_AGENT] DEBUG: Prompt length: {} characters", prompt.len());
-    
+    println!(
+        "[AI_AGENT] DEBUG: Prompt length: {} characters",
+        prompt.len()
+    );
+
     // Try OpenAI first, fallback to Ollama (async version)
     println!("[AI_AGENT] DEBUG: About to try OpenAI first");
     match call_openai_with_agent_async(prompt, agent_type).await {
         Ok(response) => {
-            println!("[AI_AGENT] DEBUG: OpenAI succeeded, response length: {}", response.len());
+            println!(
+                "[AI_AGENT] DEBUG: OpenAI succeeded, response length: {}",
+                response.len()
+            );
             Ok(response)
         }
         Err(openai_error) => {
-            println!("[AI_AGENT] DEBUG: OpenAI failed: {}. Falling back to Ollama...", openai_error);
+            println!(
+                "[AI_AGENT] DEBUG: OpenAI failed: {}. Falling back to Ollama...",
+                openai_error
+            );
             println!("[AI_AGENT] DEBUG: About to call Ollama");
             // Get the selected model or use default
             let model = get_selected_model().unwrap_or_else(|| "gemma3n:latest".to_string());
             let ollama_result = call_ollama_with_model_async(prompt, &model).await;
             match &ollama_result {
                 Ok(response) => {
-                    println!("[AI_AGENT] DEBUG: Ollama succeeded, response length: {}", response.len());
+                    println!(
+                        "[AI_AGENT] DEBUG: Ollama succeeded, response length: {}",
+                        response.len()
+                    );
                 }
                 Err(e) => {
                     println!("[AI_AGENT] DEBUG: Ollama failed: {}", e);
@@ -452,15 +488,16 @@ pub async fn call_ai_with_agent_async(prompt: &str, agent_type: &str) -> Result<
 
 pub fn prepare_ai_context(data_files: &[serde_json::Value]) -> Result<String, String> {
     let mut context_parts = Vec::new();
-    
+
     for (file_index, file_data) in data_files.iter().enumerate() {
         let mut file_summary = format!("File {}:\n", file_index + 1);
-        
+
         // Extract OCR data
         if let Some(ocr_array) = file_data["ocr"].as_array() {
             if !ocr_array.is_empty() {
                 file_summary.push_str(&format!("- OCR Text ({} items): ", ocr_array.len()));
-                let ocr_texts: Vec<String> = ocr_array.iter()
+                let ocr_texts: Vec<String> = ocr_array
+                    .iter()
                     .filter_map(|item| item["text"].as_str())
                     .take(10) // Limit to first 10 items
                     .map(|s| s.to_string())
@@ -469,12 +506,16 @@ pub fn prepare_ai_context(data_files: &[serde_json::Value]) -> Result<String, St
                 file_summary.push('\n');
             }
         }
-        
+
         // Extract Audio data
         if let Some(audio_array) = file_data["audio"].as_array() {
             if !audio_array.is_empty() {
-                file_summary.push_str(&format!("- Audio Transcriptions ({} items): ", audio_array.len()));
-                let audio_texts: Vec<String> = audio_array.iter()
+                file_summary.push_str(&format!(
+                    "- Audio Transcriptions ({} items): ",
+                    audio_array.len()
+                ));
+                let audio_texts: Vec<String> = audio_array
+                    .iter()
                     .filter_map(|item| item["transcription"].as_str())
                     .take(5) // Limit to first 5 items
                     .map(|s| s.to_string())
@@ -483,7 +524,7 @@ pub fn prepare_ai_context(data_files: &[serde_json::Value]) -> Result<String, St
                 file_summary.push('\n');
             }
         }
-        
+
         // Extract metadata
         if let Some(metadata) = file_data["metadata"].as_object() {
             if let Some(export_date) = metadata["export_date"].as_str() {
@@ -493,12 +534,12 @@ pub fn prepare_ai_context(data_files: &[serde_json::Value]) -> Result<String, St
                 file_summary.push_str(&format!("- Total Items: {}\n", total_items));
             }
         }
-        
+
         context_parts.push(file_summary);
     }
-    
+
     Ok(context_parts.join("\n"))
-} 
+}
 
 // Time range enum for AI analysis
 #[derive(Debug, Clone)]
@@ -520,11 +561,11 @@ impl TimeRange {
             TimeRange::AllTime => "1=1".to_string(), // No time filter
         }
     }
-    
+
     fn to_string(&self) -> &'static str {
         match self {
             TimeRange::Daily => "daily",
-            TimeRange::Weekly => "weekly", 
+            TimeRange::Weekly => "weekly",
             TimeRange::Monthly => "monthly",
             TimeRange::Yearly => "yearly",
             TimeRange::AllTime => "all time",
@@ -535,7 +576,7 @@ impl TimeRange {
 // New function to prepare AI context using SQL queries
 pub fn prepare_ai_context_sql(time_range: TimeRange) -> Result<String, String> {
     let client = Client::new();
-    
+
     // Build SQL query based on time range
     let time_filter = time_range.to_sql_filter();
     let query = format!(
@@ -567,47 +608,50 @@ pub fn prepare_ai_context_sql(time_range: TimeRange) -> Result<String, String> {
         "#,
         time_filter
     );
-    
+
     // Create a runtime for async operations
     let rt = Runtime::new().map_err(|e| format!("Failed to create runtime: {}", e))?;
-    
-    let response = rt.block_on(async {
-        client
-            .post("http://localhost:3030/raw_sql")
-            .header("Content-Type", "application/json")
-            .timeout(std::time::Duration::from_secs(30))
-            .json(&serde_json::json!({ "query": query }))
-            .send()
-            .await
-    }).map_err(|e| format!("Failed to send SQL query: {}", e))?;
-    
+
+    let response = rt
+        .block_on(async {
+            client
+                .post("http://localhost:3030/raw_sql")
+                .header("Content-Type", "application/json")
+                .timeout(std::time::Duration::from_secs(30))
+                .json(&serde_json::json!({ "query": query }))
+                .send()
+                .await
+        })
+        .map_err(|e| format!("Failed to send SQL query: {}", e))?;
+
     if !response.status().is_success() {
-        let error_text = rt.block_on(async {
-            response.text().await
-        }).unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = rt
+            .block_on(async { response.text().await })
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(format!("SQL API error: {}", error_text));
     }
-    
-    let combined_data: Vec<serde_json::Value> = rt.block_on(async {
-        response.json().await
-    }).map_err(|e| format!("Failed to parse SQL response: {}", e))?;
-    
+
+    let combined_data: Vec<serde_json::Value> = rt
+        .block_on(async { response.json().await })
+        .map_err(|e| format!("Failed to parse SQL response: {}", e))?;
+
     // Build context summary
     let mut context_parts = Vec::new();
-    
+
     // Add time range header
     context_parts.push(format!("Time Period: {}", time_range.to_string()));
-    
+
     // Process combined data
     if !combined_data.is_empty() {
         // Extract OCR texts
-        let ocr_texts: Vec<String> = combined_data.iter()
+        let ocr_texts: Vec<String> = combined_data
+            .iter()
             .filter_map(|item| item["ocr_text"].as_str())
             .filter(|text| !text.is_empty())
             .take(50) // Limit to first 50 items for context
             .map(|s| s.to_string())
             .collect();
-        
+
         if !ocr_texts.is_empty() {
             context_parts.push(format!(
                 "OCR Text Data ({} items): {}",
@@ -615,15 +659,16 @@ pub fn prepare_ai_context_sql(time_range: TimeRange) -> Result<String, String> {
                 ocr_texts.join(" | ")
             ));
         }
-        
+
         // Extract audio transcriptions
-        let audio_texts: Vec<String> = combined_data.iter()
+        let audio_texts: Vec<String> = combined_data
+            .iter()
             .filter_map(|item| item["transcription"].as_str())
             .filter(|text| !text.is_empty())
             .take(25) // Limit to first 25 items for context
             .map(|s| s.to_string())
             .collect();
-        
+
         if !audio_texts.is_empty() {
             context_parts.push(format!(
                 "Audio Transcriptions ({} items): {}",
@@ -631,9 +676,10 @@ pub fn prepare_ai_context_sql(time_range: TimeRange) -> Result<String, String> {
                 audio_texts.join(" | ")
             ));
         }
-        
+
         // Extract app usage patterns
-        let app_usage: std::collections::HashMap<String, u64> = combined_data.iter()
+        let app_usage: std::collections::HashMap<String, u64> = combined_data
+            .iter()
             .filter_map(|item| {
                 let app_name = item["app_name"].as_str()?;
                 if !app_name.is_empty() {
@@ -646,26 +692,29 @@ pub fn prepare_ai_context_sql(time_range: TimeRange) -> Result<String, String> {
                 *acc.entry(app_name).or_insert(0) += 1;
                 acc
             });
-        
+
         if !app_usage.is_empty() {
-            let app_summary: Vec<String> = app_usage.iter()
+            let app_summary: Vec<String> = app_usage
+                .iter()
                 .map(|(app, count)| format!("{} ({} times)", app, count))
                 .take(20) // Limit to top 20 apps
                 .collect();
-            
-            context_parts.push(format!(
-                "App Usage Summary: {}",
-                app_summary.join(", ")
-            ));
+
+            context_parts.push(format!("App Usage Summary: {}", app_summary.join(", ")));
         }
-        
+
         // Extract website usage patterns
-        let website_usage: std::collections::HashMap<String, u64> = combined_data.iter()
+        let website_usage: std::collections::HashMap<String, u64> = combined_data
+            .iter()
             .filter_map(|item| {
                 let url = item["browser_url"].as_str()?;
                 if !url.is_empty() {
                     // Extract domain from URL
-                    url.split("//").nth(1)?.split("/").next().map(|s| s.to_string())
+                    url.split("//")
+                        .nth(1)?
+                        .split("/")
+                        .next()
+                        .map(|s| s.to_string())
                 } else {
                     None
                 }
@@ -674,31 +723,33 @@ pub fn prepare_ai_context_sql(time_range: TimeRange) -> Result<String, String> {
                 *acc.entry(domain).or_insert(0) += 1;
                 acc
             });
-        
+
         if !website_usage.is_empty() {
-            let website_summary: Vec<String> = website_usage.iter()
+            let website_summary: Vec<String> = website_usage
+                .iter()
                 .map(|(domain, count)| format!("{} ({} visits)", domain, count))
                 .take(15) // Limit to top 15 websites
                 .collect();
-            
+
             context_parts.push(format!(
                 "Website Usage Summary: {}",
                 website_summary.join(", ")
             ));
         }
     }
-    
 
-    
     Ok(context_parts.join("\n\n"))
-} 
+}
 
 // RAG-based context preparation function
-pub async fn prepare_ai_context_rag(user_question: &str, time_range: TimeRange) -> Result<String, String> {
+pub async fn prepare_ai_context_rag(
+    user_question: &str,
+    time_range: TimeRange,
+) -> Result<String, String> {
     println!("[AI] prepare_ai_context_rag started");
     println!("[AI] User question: {}", user_question);
     println!("[AI] Time range: {:?}", time_range);
-    
+
     // First, ensure RAG data is ingested for this time range
     println!("[AI] Ingesting RAG data for time range: {:?}", time_range);
     let ingest_result = ingest_sql_data_rag(Some(time_range.to_string().to_string()), None).await;
@@ -706,77 +757,102 @@ pub async fn prepare_ai_context_rag(user_question: &str, time_range: TimeRange) 
         Ok(result) => println!("[AI] RAG ingestion successful: {}", result),
         Err(e) => println!("[AI] RAG ingestion failed: {}", e),
     }
-    
+
     // Create RAG query
     let rag_query = RAGQuery {
         query: user_question.to_string(),
-        top_k: 15, // Get top 100 most relevant chunks
+        top_k: 15,                 // Get top 100 most relevant chunks
         similarity_threshold: 0.3, // Lower threshold to get more diverse results
     };
-    
-    println!("[AI] RAG query parameters: top_k={}, similarity_threshold={}", 
-             rag_query.top_k, rag_query.similarity_threshold);
-    
+
+    println!(
+        "[AI] RAG query parameters: top_k={}, similarity_threshold={}",
+        rag_query.top_k, rag_query.similarity_threshold
+    );
+
     // Query the RAG system
     let rag_response = query_rag_system(
         rag_query.query,
         Some(rag_query.top_k),
         Some(rag_query.similarity_threshold),
         None,
-        None
-    ).await.map_err(|e| format!("RAG query failed: {}", e))?;
-    
-    println!("[AI] RAG system returned {} context chunks", rag_response.context_chunks.len());
-    
+        None,
+    )
+    .await
+    .map_err(|e| format!("RAG query failed: {}", e))?;
+
+    println!(
+        "[AI] RAG system returned {} context chunks",
+        rag_response.context_chunks.len()
+    );
+
     // Build context from RAG results
     let mut context_parts = Vec::new();
-    
+
     // Add time range header
     context_parts.push(format!("Time Period: {}", time_range.to_string()));
-    
+
     // Add RAG context chunks
     if !rag_response.context_chunks.is_empty() {
-        let context_text = rag_response.context_chunks.iter()
+        let context_text = rag_response
+            .context_chunks
+            .iter()
             .map(|chunk| {
                 let source_info = match chunk.metadata.source_type.as_str() {
-                    "ocr" => format!("[OCR - {}]", chunk.metadata.app_name.as_deref().unwrap_or("Unknown")),
-                    "audio" => format!("[Audio - {}]", chunk.metadata.speaker_id.as_deref().unwrap_or("Unknown")),
-                    "app_usage" => format!("[App Usage - {}]", chunk.metadata.app_name.as_deref().unwrap_or("Unknown")),
+                    "ocr" => format!(
+                        "[OCR - {}]",
+                        chunk.metadata.app_name.as_deref().unwrap_or("Unknown")
+                    ),
+                    "audio" => format!(
+                        "[Audio - {}]",
+                        chunk.metadata.speaker_id.as_deref().unwrap_or("Unknown")
+                    ),
+                    "app_usage" => format!(
+                        "[App Usage - {}]",
+                        chunk.metadata.app_name.as_deref().unwrap_or("Unknown")
+                    ),
                     _ => format!("[{}]", chunk.metadata.source_type),
                 };
                 format!("{} {}", source_info, chunk.content)
             })
             .collect::<Vec<_>>()
             .join("\n\n");
-        
+
         context_parts.push(format!(
             "Relevant Data ({} chunks found):\n{}",
             rag_response.context_chunks.len(),
             context_text
         ));
-        
+
         // Add similarity scores info
-        let avg_score = rag_response.similarity_scores.iter().sum::<f32>() / rag_response.similarity_scores.len() as f32;
+        let avg_score = rag_response.similarity_scores.iter().sum::<f32>()
+            / rag_response.similarity_scores.len() as f32;
         context_parts.push(format!(
             "Relevance Score: {:.2} (average similarity)",
             avg_score
         ));
-        
-        println!("[AI] Context generated with {} chunks, average relevance: {:.2}", 
-                 rag_response.context_chunks.len(), avg_score);
+
+        println!(
+            "[AI] Context generated with {} chunks, average relevance: {:.2}",
+            rag_response.context_chunks.len(),
+            avg_score
+        );
     } else {
         context_parts.push("No relevant data found for this query.".to_string());
         println!("[AI] No relevant data found for query");
     }
-    
+
     let final_context = context_parts.join("\n\n");
-    println!("[AI] Final context length: {} characters", final_context.len());
-    
+    println!(
+        "[AI] Final context length: {} characters",
+        final_context.len()
+    );
+
     // Log the full context to a file
+    use chrono::Utc;
     use std::fs::OpenOptions;
     use std::io::Write;
-    use chrono::Utc;
-    
+
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
     let log_filename = format!("ai_context_{}.log", timestamp);
     let mut log_file = OpenOptions::new()
@@ -785,7 +861,7 @@ pub async fn prepare_ai_context_rag(user_question: &str, time_range: TimeRange) 
         .append(false)
         .open(&log_filename)
         .map_err(|e| format!("Failed to create log file: {}", e))?;
-    
+
     writeln!(log_file, "=== AI CONTEXT LOG ===")
         .map_err(|e| format!("Failed to write to log file: {}", e))?;
     writeln!(log_file, "Timestamp: {}", Utc::now())
@@ -794,24 +870,29 @@ pub async fn prepare_ai_context_rag(user_question: &str, time_range: TimeRange) 
         .map_err(|e| format!("Failed to write to log file: {}", e))?;
     writeln!(log_file, "Time Range: {:?}", time_range)
         .map_err(|e| format!("Failed to write to log file: {}", e))?;
-    writeln!(log_file, "Context Length: {} characters", final_context.len())
-        .map_err(|e| format!("Failed to write to log file: {}", e))?;
-    writeln!(log_file, "")
-        .map_err(|e| format!("Failed to write to log file: {}", e))?;
+    writeln!(
+        log_file,
+        "Context Length: {} characters",
+        final_context.len()
+    )
+    .map_err(|e| format!("Failed to write to log file: {}", e))?;
+    writeln!(log_file, "").map_err(|e| format!("Failed to write to log file: {}", e))?;
     writeln!(log_file, "=== FULL CONTEXT ===")
         .map_err(|e| format!("Failed to write to log file: {}", e))?;
     writeln!(log_file, "{}", final_context)
         .map_err(|e| format!("Failed to write to log file: {}", e))?;
-    writeln!(log_file, "")
-        .map_err(|e| format!("Failed to write to log file: {}", e))?;
+    writeln!(log_file, "").map_err(|e| format!("Failed to write to log file: {}", e))?;
     writeln!(log_file, "=== END AI CONTEXT LOG ===")
         .map_err(|e| format!("Failed to write to log file: {}", e))?;
-    
+
     println!("[AI] Context logged to: {}", log_filename);
-    println!("[AI] First 300 chars of context: {}", &final_context[..final_context.len().min(300)]);
+    println!(
+        "[AI] First 300 chars of context: {}",
+        &final_context[..final_context.len().min(300)]
+    );
     if final_context.len() > 300 {
         println!("[AI] ... (truncated)");
     }
-    
+
     Ok(final_context)
-} 
+}

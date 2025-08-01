@@ -5,6 +5,7 @@ import { useOllamaModels } from './use-ollama-models';
 export interface SystemCheckResult {
   ollama_installed: boolean;
   screenpipe_installed: boolean;
+  screenpipe_running: boolean;
   ollama_version: string | null;
   screenpipe_version: string | null;
   screenpipe_path: string | null;

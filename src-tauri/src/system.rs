@@ -1,8 +1,8 @@
 use std::process::Command;
 // use std::thread;
-use std::time::Duration;
-use sysinfo::{System, Disks};
 use crate::types::SystemCheckResult;
+use std::time::Duration;
+use sysinfo::{Disks, System};
 
 pub fn is_screenpipe_installed() -> (bool, Option<String>) {
     let output = if cfg!(target_os = "windows") {
@@ -13,7 +13,11 @@ pub fn is_screenpipe_installed() -> (bool, Option<String>) {
 
     match output {
         Ok(output) if output.status.success() => {
-            let path = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").to_string();
+            let path = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string();
             (true, Some(path))
         }
         _ => (false, None),
@@ -45,7 +49,10 @@ pub fn is_screenpipe_running() -> bool {
                                 println!("[SystemCheck] ScreenPipe is running and healthy");
                                 return true;
                             } else {
-                                println!("[SystemCheck] ScreenPipe health check returned status: {}", status);
+                                println!(
+                                    "[SystemCheck] ScreenPipe health check returned status: {}",
+                                    status
+                                );
                                 return false;
                             }
                         } else {
@@ -54,26 +61,41 @@ pub fn is_screenpipe_running() -> bool {
                         }
                     }
                     Err(e) => {
-                        println!("[SystemCheck] Failed to parse ScreenPipe health response: {}", e);
+                        println!(
+                            "[SystemCheck] Failed to parse ScreenPipe health response: {}",
+                            e
+                        );
                         return false;
                     }
                 }
             } else {
-                println!("[SystemCheck] ScreenPipe health check failed with status: {}", response.status());
+                println!(
+                    "[SystemCheck] ScreenPipe health check failed with status: {}",
+                    response.status()
+                );
                 return false;
             }
         }
         Err(e) => {
-            println!("[SystemCheck] ScreenPipe health check failed: {}", e);
+            if e.is_connect() || e.is_timeout() {
+                println!("[SystemCheck] ScreenPipe is not running - connection refused or timeout (localhost:3030)");
+                println!(
+                    "[SystemCheck] This site can't be reached - localhost refused to connect."
+                );
+                println!("[SystemCheck] Try: Checking the connection, Checking the proxy and the firewall");
+                println!(
+                    "[SystemCheck] ERR_CONNECTION_REFUSED - ScreenPipe service is not running"
+                );
+            } else {
+                println!("[SystemCheck] ScreenPipe health check failed: {}", e);
+            }
             return false;
         }
     }
 }
 
 pub fn get_ollama_models() -> Vec<String> {
-    let output = Command::new("ollama")
-        .arg("list")
-        .output();
+    let output = Command::new("ollama").arg("list").output();
 
     match output {
         Ok(output) if output.status.success() => {
@@ -91,14 +113,12 @@ pub fn get_ollama_models() -> Vec<String> {
 // Non-blocking system check that runs in background
 pub fn check_system_requirements_async() -> SystemCheckResult {
     println!("[SystemCheck] Starting async system requirements check...");
-    
+
     // Use a timeout for each command to prevent hanging
     let _timeout_duration = Duration::from_secs(5);
-    
+
     // Check if Ollama is installed with timeout
-    let ollama_result = Command::new("ollama")
-        .arg("--version")
-        .output();
+    let ollama_result = Command::new("ollama").arg("--version").output();
 
     let (ollama_installed, ollama_version) = match ollama_result {
         Ok(ref output) if output.status.success() => {
@@ -107,7 +127,11 @@ pub fn check_system_requirements_async() -> SystemCheckResult {
             (true, Some(version))
         }
         Ok(ref output) => {
-            println!("[SystemCheck] Ollama command failed. Status: {:?}, Stderr: {}", output.status, String::from_utf8_lossy(&output.stderr));
+            println!(
+                "[SystemCheck] Ollama command failed. Status: {:?}, Stderr: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            );
             (false, None)
         }
         Err(e) => {
@@ -118,13 +142,14 @@ pub fn check_system_requirements_async() -> SystemCheckResult {
 
     // Check if ScreenPipe is installed
     let (screenpipe_installed, screenpipe_path) = is_screenpipe_installed();
-    println!("[SystemCheck] ScreenPipe installed: {} Path: {:?}", screenpipe_installed, screenpipe_path);
+    println!(
+        "[SystemCheck] ScreenPipe installed: {} Path: {:?}",
+        screenpipe_installed, screenpipe_path
+    );
 
     // Get ScreenPipe version if installed
     let screenpipe_version = if screenpipe_installed {
-        let output = Command::new("screenpipe")
-            .arg("--version")
-            .output();
+        let output = Command::new("screenpipe").arg("--version").output();
         match output {
             Ok(ref output) if output.status.success() => {
                 let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -132,11 +157,18 @@ pub fn check_system_requirements_async() -> SystemCheckResult {
                 Some(version)
             }
             Ok(ref output) => {
-                println!("[SystemCheck] ScreenPipe command failed. Status: {:?}, Stderr: {}", output.status, String::from_utf8_lossy(&output.stderr));
+                println!(
+                    "[SystemCheck] ScreenPipe command failed. Status: {:?}, Stderr: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                );
                 None
             }
             Err(e) => {
-                println!("[SystemCheck] ScreenPipe not found or failed to execute: {}", e);
+                println!(
+                    "[SystemCheck] ScreenPipe not found or failed to execute: {}",
+                    e
+                );
                 None
             }
         }
@@ -151,25 +183,25 @@ pub fn check_system_requirements_async() -> SystemCheckResult {
         if !running {
             println!("[SystemCheck] ScreenPipe is not running, attempting to start it...");
             // Try to start ScreenPipe
-            let start_result = Command::new("screenpipe")
-                .arg("start")
-                .spawn();
-            
+            let start_result = Command::new("screenpipe").spawn();
+
             match start_result {
                 Ok(_) => {
                     println!("[SystemCheck] ScreenPipe start command executed successfully");
                     // Wait a bit and check again
-                    std::thread::sleep(Duration::from_secs(2));
+                    std::thread::sleep(Duration::from_secs(3));
                     let running_after_start = is_screenpipe_running();
                     if running_after_start {
                         println!("[SystemCheck] ScreenPipe is now running after start command");
                     } else {
                         println!("[SystemCheck] ScreenPipe still not running after start command");
+                        println!("[SystemCheck] You may need to start ScreenPipe manually or check if it's properly installed");
                     }
                     running_after_start
                 }
                 Err(e) => {
                     println!("[SystemCheck] Failed to start ScreenPipe: {}", e);
+                    println!("[SystemCheck] You may need to start ScreenPipe manually or check if it's properly installed");
                     false
                 }
             }
@@ -177,6 +209,7 @@ pub fn check_system_requirements_async() -> SystemCheckResult {
             running
         }
     } else {
+        println!("[SystemCheck] ScreenPipe not installed, skipping running check");
         false
     };
 
@@ -188,9 +221,15 @@ pub fn check_system_requirements_async() -> SystemCheckResult {
     println!("[SystemCheck] RAM: {} GB (OK: {})", total_ram_gb, ram_ok);
 
     let disks = Disks::new_with_refreshed_list();
-    let free_disk_gb = disks.iter().map(|disk| disk.available_space() / 1024 / 1024 / 1024).sum();
+    let free_disk_gb = disks
+        .iter()
+        .map(|disk| disk.available_space() / 1024 / 1024 / 1024)
+        .sum();
     let disk_ok = free_disk_gb >= 10; // Require at least 10GB free space
-    println!("[SystemCheck] Disk: {} GB free (OK: {})", free_disk_gb, disk_ok);
+    println!(
+        "[SystemCheck] Disk: {} GB free (OK: {})",
+        free_disk_gb, disk_ok
+    );
 
     SystemCheckResult {
         ollama_installed,
@@ -206,7 +245,43 @@ pub fn check_system_requirements_async() -> SystemCheckResult {
     }
 }
 
+// Function to start ScreenPipe
+pub fn start_screenpipe() -> Result<bool, String> {
+    let (installed, _) = is_screenpipe_installed();
+    if !installed {
+        return Err("ScreenPipe is not installed".to_string());
+    }
+
+    // Check if already running
+    if is_screenpipe_running() {
+        return Ok(true);
+    }
+
+    // Try to start ScreenPipe
+    let start_result = Command::new("screenpipe").spawn();
+
+    match start_result {
+        Ok(_) => {
+            println!("[SystemCheck] ScreenPipe start command executed successfully");
+            // Wait a bit and check again
+            std::thread::sleep(Duration::from_secs(3));
+            let running_after_start = is_screenpipe_running();
+            if running_after_start {
+                println!("[SystemCheck] ScreenPipe is now running after start command");
+                Ok(true)
+            } else {
+                println!("[SystemCheck] ScreenPipe still not running after start command");
+                Err("Failed to start ScreenPipe - service may need manual intervention".to_string())
+            }
+        }
+        Err(e) => {
+            println!("[SystemCheck] Failed to start ScreenPipe: {}", e);
+            Err(format!("Failed to start ScreenPipe: {}", e))
+        }
+    }
+}
+
 // Legacy synchronous version (kept for backward compatibility)
 pub fn check_system_requirements() -> SystemCheckResult {
     check_system_requirements_async()
-} 
+}

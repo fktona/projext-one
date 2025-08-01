@@ -11,7 +11,7 @@ export function useInstallScreenpipe() {
     setError(null);
     setSuccess(null);
     try {
-      const result = await invoke<string>('install_screenpipe');
+      const result = await invoke<string>('install_screenpipe_cmd');
       setSuccess(result);
       return result;
     } catch (err) {

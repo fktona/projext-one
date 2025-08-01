@@ -9,7 +9,7 @@ export interface InstallProgress {
   message: string;
 }
 
-export function useInstallOllamaModel() {
+export function useInstallOllama() {
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -18,7 +18,7 @@ export function useInstallOllamaModel() {
   useEffect(() => {
     const unlisten = listen<InstallProgress>('install-progress', (event) => {
       const data = event.payload;
-      if (data.type === 'model') {
+      if (data.type === 'ollama') {
         setProgress(data);
         
         if (data.status === 'completed') {
@@ -36,13 +36,13 @@ export function useInstallOllamaModel() {
     };
   }, []);
 
-  const install = async (model: string) => {
+  const install = async () => {
     setInstalling(true);
     setError(null);
     setSuccess(null);
     setProgress(null);
     try {
-      const result = await invoke<string>('install_ollama_model_cmd', { model });
+      const result = await invoke<string>('install_ollama_cmd');
       setSuccess(result);
       return result;
     } catch (err) {

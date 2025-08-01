@@ -17,6 +17,7 @@ import { invoke } from "@tauri-apps/api/core";
 import AIChatDrawer from "@/components/AIChatDrawer";
 import { AIChatProvider } from "@/contexts/AIChatContext";
 import { useOllamaModels } from "../hooks/use-ollama-models";
+import { UpdateHandler } from "../components/UpdateHandler";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,6 +48,7 @@ export default function RootLayout({
   const { toasts, showToast, removeToast } = useToast();
   const [showProgress, setShowProgress] = useState(true);
   const [screenpipeStarted, setScreenpipeStarted] = useState(false);
+  const [continueAnyway, setContinueAnyway] = useState(false);
 
   // Use Ollama models hook
   const { fetchModels, setSelectedModel, getStoredModel } = useOllamaModels();
@@ -104,11 +106,7 @@ export default function RootLayout({
         showToast("System requirements check passed!", "success");
 
         // Start ScreenPipe if all requirements are met
-        const requirementsMet =
-          systemStatus.ollama_installed &&
-          systemStatus.screenpipe_installed &&
-          systemStatus.ram_ok &&
-          systemStatus.disk_ok;
+        const requirementsMet = systemStatus.ollama_installed;
 
         if (requirementsMet) {
           // Initialize Ollama models first
@@ -116,7 +114,7 @@ export default function RootLayout({
 
           // Delay starting ScreenPipe to allow UI to settle
           setTimeout(() => {
-            startScreenpipe();
+            systemStatus.screenpipe_installed && startScreenpipe();
           }, 1000);
         }
       }
@@ -152,10 +150,10 @@ export default function RootLayout({
   if (
     error ||
     !systemStatus ||
-    !systemStatus.ollama_installed ||
-    !systemStatus.screenpipe_installed ||
-    !systemStatus.ram_ok ||
-    !systemStatus.disk_ok
+    (!systemStatus.ollama_installed && !continueAnyway) ||
+    (!systemStatus.screenpipe_installed && !continueAnyway) ||
+    (!systemStatus.ram_ok && !continueAnyway) ||
+    (!systemStatus.disk_ok && !continueAnyway)
   ) {
     return (
       <html lang="en">
@@ -179,7 +177,11 @@ export default function RootLayout({
           </div>
 
           <div className="fixed inset-0 flex items-center justify-center">
-            <SystemStatus />
+            <SystemStatus
+              onContinueAnyway={() => setContinueAnyway(true)}
+              showContinueAnyway
+              showToast={showToast}
+            />
           </div>
         </body>
       </html>
@@ -192,6 +194,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${Instrument.variable} ${inter.variable} antialiased`}
       >
         <AIChatProvider>
+          <UpdateHandler />
           <ToastContainer toasts={toasts} onClose={removeToast} />
           <Image
             src="/bg.png"

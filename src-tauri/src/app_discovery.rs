@@ -1,9 +1,9 @@
+use crate::types::{AppCategory, AppDiscoveryResult, AppSearchResult, SystemApp};
 use std::collections::HashMap;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 use std::time::Instant;
-use std::fs;
-use crate::types::{SystemApp, AppDiscoveryResult, AppSearchResult, AppCategory};
 
 pub struct AppDiscovery {
     system_apps: Vec<SystemApp>,
@@ -67,22 +67,26 @@ impl AppDiscovery {
     pub fn search_apps(query: &str) -> AppSearchResult {
         let start_time = Instant::now();
         let discovery_result = Self::discover_all_apps();
-        
-        let all_apps: Vec<&SystemApp> = discovery_result.system_apps.iter()
+
+        let all_apps: Vec<&SystemApp> = discovery_result
+            .system_apps
+            .iter()
             .chain(discovery_result.user_apps.iter())
             .collect();
-        
+
         let query_lower = query.to_lowercase();
         let results: Vec<SystemApp> = all_apps
             .into_iter()
             .filter(|app| {
-                app.name.to_lowercase().contains(&query_lower) ||
-                app.display_name.as_ref().map_or(false, |name| 
-                    name.to_lowercase().contains(&query_lower)
-                ) ||
-                app.description.as_ref().map_or(false, |desc| 
-                    desc.to_lowercase().contains(&query_lower)
-                )
+                app.name.to_lowercase().contains(&query_lower)
+                    || app
+                        .display_name
+                        .as_ref()
+                        .map_or(false, |name| name.to_lowercase().contains(&query_lower))
+                    || app
+                        .description
+                        .as_ref()
+                        .map_or(false, |desc| desc.to_lowercase().contains(&query_lower))
             })
             .cloned()
             .collect();
@@ -101,10 +105,12 @@ impl AppDiscovery {
     /// Get apps by category
     pub fn get_apps_by_category(category: &str) -> AppCategory {
         let discovery_result = Self::discover_all_apps();
-        let all_apps: Vec<&SystemApp> = discovery_result.system_apps.iter()
+        let all_apps: Vec<&SystemApp> = discovery_result
+            .system_apps
+            .iter()
             .chain(discovery_result.user_apps.iter())
             .collect();
-        
+
         let category_apps: Vec<SystemApp> = all_apps
             .into_iter()
             .filter(|app| app.category.as_ref().map_or(false, |cat| cat == category))
@@ -123,13 +129,13 @@ impl AppDiscovery {
     fn discover_windows_apps(&mut self) -> Result<(), String> {
         // Registry-based discovery
         self.discover_windows_registry_apps()?;
-        
+
         // Program Files discovery
         self.discover_windows_program_files()?;
-        
+
         // User profile discovery
         self.discover_windows_user_apps()?;
-        
+
         Ok(())
     }
 
@@ -158,17 +164,21 @@ impl AppDiscovery {
             }
         }
 
-        println!("Total apps found: {} system, {} user", self.system_apps.len(), self.user_apps.len());
+        println!(
+            "Total apps found: {} system, {} user",
+            self.system_apps.len(),
+            self.user_apps.len()
+        );
         Ok(())
     }
 
     #[cfg(target_os = "windows")]
     fn parse_windows_registry_output(&mut self, output: &str) {
         let mut current_app: Option<SystemApp> = None;
-        
+
         for line in output.lines() {
             let line = line.trim();
-            
+
             if line.starts_with("HKEY_") {
                 // Save previous app if exists
                 if let Some(app) = current_app.take() {
@@ -176,7 +186,7 @@ impl AppDiscovery {
                         self.add_app(app);
                     }
                 }
-                
+
                 // Extract app name from registry key
                 if let Some(name) = line.split('\\').last() {
                     current_app = Some(SystemApp {
@@ -266,7 +276,7 @@ impl AppDiscovery {
                 }
             }
         }
-        
+
         // Add the last app
         if let Some(app) = current_app {
             if !app.name.is_empty() && app.display_name.is_some() {
@@ -277,10 +287,7 @@ impl AppDiscovery {
 
     #[cfg(target_os = "windows")]
     fn discover_windows_program_files(&mut self) -> Result<(), String> {
-        let program_dirs = vec![
-            r"C:\Program Files",
-            r"C:\Program Files (x86)",
-        ];
+        let program_dirs = vec![r"C:\Program Files", r"C:\Program Files (x86)"];
 
         for dir in program_dirs {
             if let Ok(entries) = fs::read_dir(dir) {
@@ -302,8 +309,14 @@ impl AppDiscovery {
     fn discover_windows_user_apps(&mut self) -> Result<(), String> {
         // Check common user app locations
         let user_dirs = vec![
-            format!("{}\\AppData\\Local", std::env::var("USERPROFILE").unwrap_or_default()),
-            format!("{}\\AppData\\Roaming", std::env::var("USERPROFILE").unwrap_or_default()),
+            format!(
+                "{}\\AppData\\Local",
+                std::env::var("USERPROFILE").unwrap_or_default()
+            ),
+            format!(
+                "{}\\AppData\\Roaming",
+                std::env::var("USERPROFILE").unwrap_or_default()
+            ),
         ];
 
         for dir in user_dirs {
@@ -331,7 +344,7 @@ impl AppDiscovery {
                     if path.is_file() && self.is_executable(&path) {
                         if let Some(name) = path.file_stem() {
                             let app_name = name.to_string_lossy().to_string();
-                            
+
                             // Skip if we already have this app from registry
                             if !self.app_exists(&app_name) {
                                 let app = SystemApp {
@@ -348,7 +361,7 @@ impl AppDiscovery {
                                     publisher: None,
                                     size: None,
                                 };
-                                
+
                                 self.add_app(app);
                             }
                         }
@@ -361,14 +374,19 @@ impl AppDiscovery {
     /// Check if an app already exists in our collections
     fn app_exists(&self, app_name: &str) -> bool {
         let name_lower = app_name.to_lowercase();
-        
+
         self.system_apps.iter().any(|app| {
-            app.name.to_lowercase() == name_lower ||
-            app.display_name.as_ref().map_or(false, |name| name.to_lowercase() == name_lower)
-        }) ||
-        self.user_apps.iter().any(|app| {
-            app.name.to_lowercase() == name_lower ||
-            app.display_name.as_ref().map_or(false, |name| name.to_lowercase() == name_lower)
+            app.name.to_lowercase() == name_lower
+                || app
+                    .display_name
+                    .as_ref()
+                    .map_or(false, |name| name.to_lowercase() == name_lower)
+        }) || self.user_apps.iter().any(|app| {
+            app.name.to_lowercase() == name_lower
+                || app
+                    .display_name
+                    .as_ref()
+                    .map_or(false, |name| name.to_lowercase() == name_lower)
         })
     }
 
@@ -384,11 +402,14 @@ impl AppDiscovery {
                 false
             }
         }
-        
+
         #[cfg(windows)]
         {
             if let Some(extension) = path.extension() {
-                matches!(extension.to_str(), Some("exe") | Some("com") | Some("bat") | Some("cmd"))
+                matches!(
+                    extension.to_str(),
+                    Some("exe") | Some("com") | Some("bat") | Some("cmd")
+                )
             } else {
                 false
             }
@@ -427,7 +448,7 @@ impl AppDiscovery {
                         publisher: None,
                         size: None,
                     };
-                    
+
                     self.running_apps.push(app);
                 }
             }
@@ -440,10 +461,10 @@ impl AppDiscovery {
     fn add_app(&mut self, app: SystemApp) {
         // Determine if it's a system app based on various criteria
         let is_system = self.is_system_app(&app);
-        
+
         let mut app_with_correct_type = app;
         app_with_correct_type.is_system_app = is_system;
-        
+
         if is_system {
             self.system_apps.push(app_with_correct_type);
         } else {
@@ -457,49 +478,54 @@ impl AppDiscovery {
         if app.is_system_app {
             return true;
         }
-        
+
         // Check executable path for system indicators
         if let Some(ref exec_path) = app.executable_path {
             let path_lower = exec_path.to_lowercase();
-            
+
             // System directories
-            if path_lower.contains("\\windows\\") ||
-               path_lower.contains("\\program files\\") ||
-               path_lower.contains("\\system32\\") ||
-               path_lower.contains("\\syswow64\\") {
+            if path_lower.contains("\\windows\\")
+                || path_lower.contains("\\program files\\")
+                || path_lower.contains("\\system32\\")
+                || path_lower.contains("\\syswow64\\")
+            {
                 return true;
             }
         }
-        
+
         // Check publisher for Microsoft/system publishers
         if let Some(ref publisher) = app.publisher {
             let publisher_lower = publisher.to_lowercase();
-            if publisher_lower.contains("microsoft") ||
-               publisher_lower.contains("windows") ||
-               publisher_lower.contains("system") {
+            if publisher_lower.contains("microsoft")
+                || publisher_lower.contains("windows")
+                || publisher_lower.contains("system")
+            {
                 return true;
             }
         }
-        
+
         // Check name for system indicators
         let name_lower = app.name.to_lowercase();
-        if name_lower.contains("windows") ||
-           name_lower.contains("microsoft") ||
-           name_lower.contains("system") ||
-           name_lower.contains("update") ||
-           name_lower.contains("security") {
+        if name_lower.contains("windows")
+            || name_lower.contains("microsoft")
+            || name_lower.contains("system")
+            || name_lower.contains("update")
+            || name_lower.contains("security")
+        {
             return true;
         }
-        
+
         false
     }
 
     /// Categorize apps based on their properties
     fn categorize_apps(&mut self) {
-        let all_apps: Vec<&SystemApp> = self.system_apps.iter()
+        let all_apps: Vec<&SystemApp> = self
+            .system_apps
+            .iter()
             .chain(self.user_apps.iter())
             .collect();
-        
+
         for app in all_apps {
             let category = self.determine_app_category(app);
             self.categories
@@ -523,18 +549,33 @@ impl AppDiscovery {
 
         if let Some(ref exec_path) = app.executable_path {
             let path_lower = exec_path.to_lowercase();
-            
+
             if path_lower.contains("microsoft") || path_lower.contains("office") {
                 return "Office & Productivity".to_string();
-            } else if path_lower.contains("chrome") || path_lower.contains("firefox") || path_lower.contains("browser") {
+            } else if path_lower.contains("chrome")
+                || path_lower.contains("firefox")
+                || path_lower.contains("browser")
+            {
                 return "Web Browsers".to_string();
-            } else if path_lower.contains("game") || path_lower.contains("steam") || path_lower.contains("epic") {
+            } else if path_lower.contains("game")
+                || path_lower.contains("steam")
+                || path_lower.contains("epic")
+            {
                 return "Games".to_string();
-            } else if path_lower.contains("code") || path_lower.contains("studio") || path_lower.contains("ide") {
+            } else if path_lower.contains("code")
+                || path_lower.contains("studio")
+                || path_lower.contains("ide")
+            {
                 return "Development Tools".to_string();
-            } else if path_lower.contains("media") || path_lower.contains("video") || path_lower.contains("audio") {
+            } else if path_lower.contains("media")
+                || path_lower.contains("video")
+                || path_lower.contains("audio")
+            {
                 return "Media & Entertainment".to_string();
-            } else if path_lower.contains("system") || path_lower.contains("windows") || path_lower.contains("control") {
+            } else if path_lower.contains("system")
+                || path_lower.contains("windows")
+                || path_lower.contains("control")
+            {
                 return "System Tools".to_string();
             }
         }
@@ -545,4 +586,4 @@ impl AppDiscovery {
             "User Applications".to_string()
         }
     }
-} 
+}

@@ -1,9 +1,25 @@
 import React, { useState } from "react";
 import { useSystemCheck } from "../hooks/use-system-check";
 import { useInstallScreenpipe } from "../hooks/use-install-screenpipe";
+import { useInstallOllama } from "../hooks/use-install-ollama";
+import { useInstallOllamaModel } from "../hooks/use-install-ollama-model";
+import { InstallProgress } from "./InstallProgress";
 import { GemmaModelStatus } from "./GemmaModelStatus";
+import { useToast } from "@/lib/hooks/useToast";
 
-export function SystemStatus() {
+export function SystemStatus({
+  onContinueAnyway,
+  showContinueAnyway,
+  showToast: externalShowToast,
+}: {
+  onContinueAnyway?: () => void;
+  showContinueAnyway?: boolean;
+  showToast?: (
+    message: string,
+    type?: "success" | "error" | "info" | "warning",
+    duration?: number
+  ) => void;
+}) {
   const {
     systemStatus,
     isLoading,
@@ -14,12 +30,32 @@ export function SystemStatus() {
     setSelectedOllamaModel,
   } = useSystemCheck();
   const {
-    install,
-    installing,
-    error: installError,
-    success,
+    install: installScreenpipe,
+    installing: installingScreenpipe,
+    error: installScreenpipeError,
+    success: screenpipeSuccess,
   } = useInstallScreenpipe();
-  const [showSuccess, setShowSuccess] = useState(false);
+  const {
+    install: installOllama,
+    installing: installingOllama,
+    error: installOllamaError,
+    success: ollamaSuccess,
+    progress: ollamaProgress,
+  } = useInstallOllama();
+  const {
+    install: installOllamaModel,
+    installing: installingModel,
+    error: installModelError,
+    success: modelSuccess,
+    progress: modelProgress,
+  } = useInstallOllamaModel();
+  const [showScreenpipeSuccess, setShowScreenpipeSuccess] = useState(false);
+  const [showOllamaSuccess, setShowOllamaSuccess] = useState(false);
+  const [showModelSuccess, setShowModelSuccess] = useState(false);
+  const { showToast: internalShowToast } = useToast();
+
+  // Use external showToast if provided, otherwise use internal one
+  const showToast = externalShowToast || internalShowToast;
 
   if (isLoading) {
     return (
@@ -55,6 +91,7 @@ export function SystemStatus() {
   const requirementsMet =
     systemStatus.ollama_installed &&
     systemStatus.screenpipe_installed &&
+    systemStatus.screenpipe_running &&
     systemStatus.ram_ok &&
     systemStatus.disk_ok;
 
@@ -69,8 +106,41 @@ export function SystemStatus() {
       {!requirementsMet && (
         <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded p-2 mb-2">
           <strong>Warning:</strong> System requirements are <b>not met</b>.
-          Please install all required components and ensure you have enough RAM
-          and disk space.
+          {!systemStatus.ollama_installed && " Ollama is not installed."}
+          {!systemStatus.screenpipe_installed &&
+            " Project One is not installed."}
+          {systemStatus.screenpipe_installed &&
+            !systemStatus.screenpipe_running &&
+            " Project One is installed but not running."}
+          {!systemStatus.ram_ok && " Insufficient RAM (minimum 8GB required)."}
+          {!systemStatus.disk_ok &&
+            " Insufficient disk space (minimum 10GB free required)."}
+        </div>
+      )}
+
+      {/* Continue Anyway Button - Only show if ScreenPipe is not installed */}
+      {showContinueAnyway && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-3 mb-3">
+          <div className="text-yellow-400 text-xs mb-2">
+            <strong>Note:</strong> Project One CLI is required for this
+            application to function properly.
+          </div>
+          <button
+            onClick={() => {
+              // Show tooltip/message instead of installing
+              if (onContinueAnyway && systemStatus.screenpipe_installed) {
+                onContinueAnyway();
+              } else {
+                showToast(
+                  "Project One CLI must be installed for this application to function properly. Please install it first.",
+                  "warning"
+                );
+              }
+            }}
+            className="w-full bg-yellow-600 hover:bg-yellow-700 text-white text-xs py-2 rounded transition-colors"
+          >
+            Continue Anyway
+          </button>
         </div>
       )}
 
@@ -95,6 +165,68 @@ export function SystemStatus() {
             )}
           </div>
         </div>
+
+        {/* Install Ollama Button */}
+        {!systemStatus.ollama_installed && (
+          <div className="flex flex-col gap-1 mt-2">
+            <button
+              onClick={async () => {
+                try {
+                  await installOllama();
+                  setShowOllamaSuccess(true);
+                  setTimeout(() => {
+                    setShowOllamaSuccess(false);
+                    refresh();
+                  }, 2000);
+                } catch {}
+              }}
+              disabled={installingOllama}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs py-2 rounded transition-colors"
+            >
+              {installingOllama ? "Installing..." : "Install Ollama"}
+            </button>
+            {installOllamaError && (
+              <div className="text-red-400 text-xs mt-1">
+                {installOllamaError}
+                {installOllamaError.includes("winget not available") && (
+                  <div className="mt-1">
+                    <a
+                      href="https://ollama.ai/download"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 underline"
+                    >
+                      Download Ollama manually
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+            {showOllamaSuccess && ollamaSuccess && (
+              <div className="text-green-400 text-xs mt-1">{ollamaSuccess}</div>
+            )}
+            <InstallProgress
+              progress={ollamaProgress}
+              installing={installingOllama}
+            />
+            {/* Manual download link */}
+            <div className="text-center mt-1">
+              <span className="text-white/40 text-xs">or </span>
+              <a
+                href="https://ollama.ai/download"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 underline text-xs"
+              >
+                download manually
+              </a>
+              <span className="text-white/40 text-xs">
+                {" "}
+                from Ollama website
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Ollama Models */}
         {systemStatus.ollama_installed && ollamaModels.length > 0 && (
@@ -151,13 +283,79 @@ export function SystemStatus() {
           </div>
         )}
 
+        {/* Install Ollama Model */}
+        {systemStatus.ollama_installed && (
+          <div className="pl-6 space-y-1 mt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-white/60 text-xs">Install Model:</span>
+              <a
+                href="https://ollama.ai/library"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 underline text-xs"
+              >
+                Browse models
+              </a>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Model name (e.g., llama2)"
+                className="flex-1 bg-white/10 border border-white/20 rounded px-2 py-1 text-white text-xs placeholder-white/40"
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") {
+                    const modelName = (
+                      e.target as HTMLInputElement
+                    ).value.trim();
+                    if (modelName) {
+                      installOllamaModel(modelName);
+                      (e.target as HTMLInputElement).value = "";
+                    }
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  const input = document.querySelector(
+                    'input[placeholder*="Model name"]'
+                  ) as HTMLInputElement;
+                  const modelName = input?.value.trim();
+                  if (modelName) {
+                    installOllamaModel(modelName);
+                    input.value = "";
+                  }
+                }}
+                disabled={installingModel}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded transition-colors disabled:opacity-50"
+              >
+                {installingModel ? "Installing..." : "Install"}
+              </button>
+            </div>
+            {installModelError && (
+              <div className="text-red-400 text-xs mt-1">
+                {installModelError}
+              </div>
+            )}
+            {showModelSuccess && modelSuccess && (
+              <div className="text-green-400 text-xs mt-1">{modelSuccess}</div>
+            )}
+            <InstallProgress
+              progress={modelProgress}
+              installing={installingModel}
+            />
+          </div>
+        )}
+
         {/* Screenpipe Status */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div
               className={`w-2 h-2 rounded-full ${
-                systemStatus.screenpipe_installed
+                systemStatus.screenpipe_installed &&
+                systemStatus.screenpipe_running
                   ? "bg-green-400"
+                  : systemStatus.screenpipe_installed
+                  ? "bg-yellow-400"
                   : "bg-red-400"
               }`}
             />
@@ -165,9 +363,13 @@ export function SystemStatus() {
           </div>
           <div className="text-right">
             {systemStatus.screenpipe_installed ? (
-              <span className="text-green-400 text-xs">
-                {/* {systemStatus.screenpipe_version}  */} Installed
-              </span>
+              systemStatus.screenpipe_running ? (
+                <span className="text-green-400 text-xs">Running</span>
+              ) : (
+                <span className="text-yellow-400 text-xs">
+                  Installed (Not Running)
+                </span>
+              )
             ) : (
               <span className="text-red-400 text-xs">Not installed</span>
             )}
@@ -188,27 +390,55 @@ export function SystemStatus() {
             <button
               onClick={async () => {
                 try {
-                  await install();
-                  setShowSuccess(true);
+                  await installScreenpipe();
+                  setShowScreenpipeSuccess(true);
                   setTimeout(() => {
-                    setShowSuccess(false);
+                    setShowScreenpipeSuccess(false);
                     refresh();
                   }, 2000);
                 } catch {}
               }}
-              disabled={installing}
+              disabled={installingScreenpipe}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs py-2 rounded transition-colors"
             >
-              {installing ? "Installing..." : "Install Screenpipe"}
+              {installingScreenpipe ? "Installing..." : "Install Project One"}
             </button>
-            {installError && (
-              <div className="text-red-400 text-xs mt-1">{installError}</div>
+            {installScreenpipeError && (
+              <div className="text-red-400 text-xs mt-1">
+                {installScreenpipeError}
+              </div>
             )}
-            {showSuccess && success && (
-              <div className="text-green-400 text-xs mt-1">{success}</div>
+            {showScreenpipeSuccess && screenpipeSuccess && (
+              <div className="text-green-400 text-xs mt-1">
+                {screenpipeSuccess}
+              </div>
             )}
           </div>
         )}
+
+        {/* Start Screenpipe Button */}
+        {systemStatus.screenpipe_installed &&
+          !systemStatus.screenpipe_running && (
+            <div className="flex flex-col gap-1 mt-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const { invoke } = await import("@tauri-apps/api/core");
+                    await invoke("start_screenpipe_cmd");
+                    // Wait a bit and refresh to check if it's running
+                    setTimeout(() => {
+                      refresh();
+                    }, 2000);
+                  } catch (error) {
+                    console.error("Failed to start ScreenPipe:", error);
+                  }
+                }}
+                className="w-full bg-yellow-600 hover:bg-yellow-700 text-white text-xs py-2 rounded transition-colors"
+              >
+                Start ScreenPipe
+              </button>
+            </div>
+          )}
 
         {/* RAM Status */}
         <div className="flex items-center justify-between">

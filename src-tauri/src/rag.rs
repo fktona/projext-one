@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 // RAG Configuration
@@ -48,10 +48,10 @@ impl RAGSystem {
     pub fn new() -> Self {
         Self { chunks: Vec::new() }
     }
-    
+
     pub fn ingest_data(&mut self, data_files: &[serde_json::Value]) -> Result<usize> {
         let mut total_chunks = 0;
-        
+
         for (file_index, file_data) in data_files.iter().enumerate() {
             // Process OCR data
             if let Some(ocr_array) = file_data["ocr"].as_array() {
@@ -64,43 +64,55 @@ impl RAGSystem {
                     }
                 }
             }
-            
+
             // Process Audio data
             if let Some(audio_array) = file_data["audio"].as_array() {
                 for audio_item in audio_array {
                     if let Some(transcription) = audio_item["transcription"].as_str() {
-                        let chunks = self.chunk_text(transcription, "audio", file_index, audio_item)?;
+                        let chunks =
+                            self.chunk_text(transcription, "audio", file_index, audio_item)?;
                         let chunk_count = chunks.len();
                         self.chunks.extend(chunks);
                         total_chunks += chunk_count;
                     }
                 }
             }
-            
+
             // Process App Usage data
             if let Some(app_usage) = file_data["app_usage"].as_object() {
                 if let Some(app_name) = app_usage["app_name"].as_str() {
                     let usage_text = format!("App: {} - Usage data", app_name);
-                    let chunks = self.chunk_text(&usage_text, "app_usage", file_index, &serde_json::json!({
-                        "app_name": app_name
-                    }))?;
+                    let chunks = self.chunk_text(
+                        &usage_text,
+                        "app_usage",
+                        file_index,
+                        &serde_json::json!({
+                            "app_name": app_name
+                        }),
+                    )?;
                     let chunk_count = chunks.len();
                     self.chunks.extend(chunks);
                     total_chunks += chunk_count;
                 }
             }
         }
-        
+
         println!("[RAG] Ingested {} total chunks", total_chunks);
         Ok(total_chunks)
     }
-    
-    fn chunk_text(&self, text: &str, source_type: &str, file_index: usize, metadata: &serde_json::Value) -> Result<Vec<DataChunk>> {
+
+    fn chunk_text(
+        &self,
+        text: &str,
+        source_type: &str,
+        file_index: usize,
+        metadata: &serde_json::Value,
+    ) -> Result<Vec<DataChunk>> {
         // Simple text chunking by splitting on spaces and taking chunks of CHUNK_SIZE characters
         let words: Vec<&str> = text.split_whitespace().collect();
         let mut chunks = Vec::new();
         let mut current_chunk = String::new();
-        
+
         for word in words {
             if current_chunk.len() + word.len() + 1 > CHUNK_SIZE {
                 if !current_chunk.is_empty() {
@@ -113,13 +125,13 @@ impl RAGSystem {
             }
             current_chunk.push_str(word);
         }
-        
+
         if !current_chunk.is_empty() {
             chunks.push(current_chunk);
         }
-        
+
         let mut data_chunks = Vec::new();
-        
+
         for (_chunk_index, chunk_text) in chunks.iter().enumerate() {
             let chunk_metadata = ChunkMetadata {
                 source_type: source_type.to_string(),
@@ -129,27 +141,27 @@ impl RAGSystem {
                 speaker_id: metadata["speaker_id"].as_str().map(|s| s.to_string()),
                 file_index: Some(file_index),
             };
-            
+
             let data_chunk = DataChunk {
                 id: Uuid::new_v4().to_string(),
                 content: chunk_text.to_string(),
                 metadata: chunk_metadata,
             };
-            
+
             data_chunks.push(data_chunk);
         }
-        
+
         Ok(data_chunks)
     }
-    
+
     pub async fn query_rag(&self, query: &RAGQuery) -> Result<RAGResponse> {
+        use chrono::Utc;
         use std::fs::OpenOptions;
         use std::io::Write;
-        use chrono::Utc;
-        
+
         println!("[RAG] Starting search for query: '{}'", query.query);
         println!("[RAG] Total chunks available: {}", self.chunks.len());
-        
+
         // Create log file with timestamp
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
         let log_filename = format!("rag_results_{}.log", timestamp);
@@ -159,77 +171,154 @@ impl RAGSystem {
             .append(false)
             .open(&log_filename)
             .map_err(|e| anyhow::anyhow!("Failed to create log file: {}", e))?;
-        
+
         writeln!(log_file, "=== RAG QUERY LOG ===")?;
         writeln!(log_file, "Timestamp: {}", Utc::now())?;
         writeln!(log_file, "Query: {}", query.query)?;
         writeln!(log_file, "Total chunks available: {}", self.chunks.len())?;
         writeln!(log_file, "Top K: {}", query.top_k)?;
-        writeln!(log_file, "Similarity threshold: {}", query.similarity_threshold)?;
+        writeln!(
+            log_file,
+            "Similarity threshold: {}",
+            query.similarity_threshold
+        )?;
         writeln!(log_file, "")?;
-        
+
         // Improved keyword-based search with better filtering
         let mut context_chunks = Vec::new();
         let mut similarity_scores = Vec::new();
-        
+
         let query_lower = query.query.to_lowercase();
-        
+
         // Filter out SQL-specific terms and common words that don't help with matching
         let stop_words = [
-            "f.timestamp", "datetime", "now", "hour", "day", "month", "year",
-            "the", "for", "and", "or", "in", "on", "at", "to", "from", "with",
-            "by", "of", "a", "an", "is", "are", "was", "were", "be", "been",
-            "have", "has", "had", "do", "does", "did", "will", "would", "could",
-            "should", "may", "might", "can", "must", "shall", "period:", "look",
-            "used,", "visited,", "activities,", "tasks,", "made.", "analyze",
-            "all", "digital", "activity", "applications", "websites", "communication",
-            "work", "important", "actions", "decisions"
+            "f.timestamp",
+            "datetime",
+            "now",
+            "hour",
+            "day",
+            "month",
+            "year",
+            "the",
+            "for",
+            "and",
+            "or",
+            "in",
+            "on",
+            "at",
+            "to",
+            "from",
+            "with",
+            "by",
+            "of",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "can",
+            "must",
+            "shall",
+            "period:",
+            "look",
+            "used,",
+            "visited,",
+            "activities,",
+            "tasks,",
+            "made.",
+            "analyze",
+            "all",
+            "digital",
+            "activity",
+            "applications",
+            "websites",
+            "communication",
+            "work",
+            "important",
+            "actions",
+            "decisions",
         ];
-        
+
         let query_words: Vec<&str> = query_lower
             .split_whitespace()
             .filter(|word| !stop_words.contains(word))
             .collect();
-        
+
         println!("[RAG] Filtered search keywords: {:?}", query_words);
         writeln!(log_file, "Filtered search keywords: {:?}", query_words)?;
-        
+
         // If no meaningful keywords, use a broader search
         let search_terms = if query_words.is_empty() {
-            vec!["app", "activity", "time", "work", "communication", "development", "meeting", "coding"]
+            vec![
+                "app",
+                "activity",
+                "time",
+                "work",
+                "communication",
+                "development",
+                "meeting",
+                "coding",
+            ]
         } else {
             query_words
         };
-        
+
         for chunk in &self.chunks {
             let chunk_lower = chunk.content.to_lowercase();
             let mut score = 0.0;
-            
+
             for word in &search_terms {
                 if chunk_lower.contains(word) {
                     score += 1.0;
                 }
             }
-            
+
             if score > 0.0 {
                 score = score / search_terms.len() as f32;
                 // Lower the threshold for better matching
-                if score >= 0.1 { // Much lower threshold
+                if score >= 0.1 {
+                    // Much lower threshold
                     context_chunks.push(chunk.clone());
                     similarity_scores.push(score);
                 }
             }
         }
-        
-        println!("[RAG] Found {} chunks with score >= {}", context_chunks.len(), query.similarity_threshold);
-        writeln!(log_file, "Found {} chunks with score >= {}", context_chunks.len(), query.similarity_threshold)?;
-        
+
+        println!(
+            "[RAG] Found {} chunks with score >= {}",
+            context_chunks.len(),
+            query.similarity_threshold
+        );
+        writeln!(
+            log_file,
+            "Found {} chunks with score >= {}",
+            context_chunks.len(),
+            query.similarity_threshold
+        )?;
+
         // Sort by similarity score and take top_k
-        let mut indexed_chunks: Vec<(usize, f32)> = similarity_scores.iter().enumerate()
+        let mut indexed_chunks: Vec<(usize, f32)> = similarity_scores
+            .iter()
+            .enumerate()
             .map(|(idx, &score)| (idx, score))
             .collect();
         indexed_chunks.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        
+
         let top_k = std::cmp::min(query.top_k, indexed_chunks.len());
         let final_chunks: Vec<DataChunk> = indexed_chunks[..top_k]
             .iter()
@@ -239,36 +328,49 @@ impl RAGSystem {
             .iter()
             .map(|&(_, score)| score)
             .collect();
-        
+
         println!("[RAG] Selected top {} chunks:", final_chunks.len());
         writeln!(log_file, "Selected top {} chunks:", final_chunks.len())?;
-        
+
         for (i, (chunk, score)) in final_chunks.iter().zip(final_scores.iter()).enumerate() {
             println!("[RAG] Chunk {} (Score: {:.3}):", i + 1, score);
             println!("[RAG]   Type: {}", chunk.metadata.source_type);
-            println!("[RAG]   App: {}", chunk.metadata.app_name.as_deref().unwrap_or("Unknown"));
+            println!(
+                "[RAG]   App: {}",
+                chunk.metadata.app_name.as_deref().unwrap_or("Unknown")
+            );
             println!("[RAG]   Content: {}", chunk.content);
             println!("[RAG]   ---");
-            
+
             writeln!(log_file, "Chunk {} (Score: {:.3}):", i + 1, score)?;
             writeln!(log_file, "  Type: {}", chunk.metadata.source_type)?;
-            writeln!(log_file, "  App: {}", chunk.metadata.app_name.as_deref().unwrap_or("Unknown"))?;
-            writeln!(log_file, "  Timestamp: {}", chunk.metadata.timestamp.as_deref().unwrap_or("Unknown"))?;
+            writeln!(
+                log_file,
+                "  App: {}",
+                chunk.metadata.app_name.as_deref().unwrap_or("Unknown")
+            )?;
+            writeln!(
+                log_file,
+                "  Timestamp: {}",
+                chunk.metadata.timestamp.as_deref().unwrap_or("Unknown")
+            )?;
             writeln!(log_file, "  Content: {}", chunk.content)?;
             writeln!(log_file, "  ---")?;
         }
-        
+
         // Generate answer using RAG context
         println!("[RAG] Generating AI response...");
         println!("[RAG] DEBUG: About to call generate_rag_answer");
         writeln!(log_file, "Generating AI response...")?;
-        
-        let answer = self.generate_rag_answer(&query.query, &final_chunks).await?;
+
+        let answer = self
+            .generate_rag_answer(&query.query, &final_chunks)
+            .await?;
         println!("[RAG] DEBUG: generate_rag_answer completed successfully");
-        
+
         println!("[RAG] AI Response: {}", answer);
         writeln!(log_file, "AI Response: {}", answer)?;
-        
+
         // Build context that was sent to AI
         let mut context_parts = Vec::new();
         for (i, chunk) in final_chunks.iter().enumerate() {
@@ -281,37 +383,52 @@ impl RAGSystem {
                 chunk.content
             ));
         }
-        
+
         let full_context = context_parts.join("\n\n");
         writeln!(log_file, "")?;
         writeln!(log_file, "=== FULL CONTEXT SENT TO AI ===")?;
         writeln!(log_file, "{}", full_context)?;
         writeln!(log_file, "")?;
         writeln!(log_file, "=== END RAG LOG ===")?;
-        
-        println!("[RAG] Full context sent to AI ({} characters):", full_context.len());
-        println!("[RAG] First 500 chars: {}", &full_context[..full_context.len().min(500)]);
+
+        println!(
+            "[RAG] Full context sent to AI ({} characters):",
+            full_context.len()
+        );
+        println!(
+            "[RAG] First 500 chars: {}",
+            &full_context[..full_context.len().min(500)]
+        );
         if full_context.len() > 500 {
             println!("[RAG] ... (truncated)");
         }
         println!("[RAG] Log saved to: {}", log_filename);
         println!("[RAG] Search completed successfully");
-        
+
         Ok(RAGResponse {
             answer,
             context_chunks: final_chunks,
             similarity_scores: final_scores,
         })
     }
-    
-    async fn generate_rag_answer(&self, query: &str, context_chunks: &[DataChunk]) -> Result<String> {
+
+    async fn generate_rag_answer(
+        &self,
+        query: &str,
+        context_chunks: &[DataChunk],
+    ) -> Result<String> {
         println!("[RAG] DEBUG: generate_rag_answer started");
-        println!("[RAG] DEBUG: Number of context chunks: {}", context_chunks.len());
-        
+        println!(
+            "[RAG] DEBUG: Number of context chunks: {}",
+            context_chunks.len()
+        );
+
         // Prepare context from chunks
-        let context_text = context_chunks.iter()
+        let context_text = context_chunks
+            .iter()
             .map(|chunk| {
-                format!("[{}] {}: {}", 
+                format!(
+                    "[{}] {}: {}",
                     chunk.metadata.source_type,
                     chunk.metadata.app_name.as_deref().unwrap_or("Unknown"),
                     chunk.content
@@ -319,49 +436,55 @@ impl RAGSystem {
             })
             .collect::<Vec<_>>()
             .join("\n\n");
-        
-        println!("[RAG] DEBUG: Context text length: {} characters", context_text.len());
-        
+
+        println!(
+            "[RAG] DEBUG: Context text length: {} characters",
+            context_text.len()
+        );
+
         // Create RAG prompt
         let prompt = format!(
             "You are a helpful AI assistant analyzing digital activity data. Use the following context to answer the user's question accurately and insightfully.\n\nCONTEXT DATA:\n{}\n\nUSER QUESTION: {}\n\nPlease provide a comprehensive answer based on the context data above. Be specific and reference the actual content when possible. If the context doesn't contain enough information to answer the question, say so clearly.\n\nAnswer:",
             context_text, query
         );
-        
+
         println!("[RAG] DEBUG: About to call call_ai_async (OpenAI fallback to Ollama)");
         println!("[RAG] DEBUG: Prompt length: {} characters", prompt.len());
-        
+
         // Use call_ai_async for OpenAI first, fallback to Ollama
         let result = crate::ai::call_ai_async(&prompt).await;
-        
+
         match &result {
             Ok(response) => {
-                println!("[RAG] DEBUG: call_ai_async succeeded, response length: {}", response.len());
+                println!(
+                    "[RAG] DEBUG: call_ai_async succeeded, response length: {}",
+                    response.len()
+                );
             }
             Err(e) => {
                 println!("[RAG] DEBUG: call_ai_async failed: {}", e);
             }
         }
-        
+
         result.map_err(|e| anyhow::anyhow!("Failed to generate RAG answer: {}", e))
     }
-    
+
     pub fn clear_collection(&mut self) -> Result<()> {
         self.chunks.clear();
         println!("[RAG] Cleared all chunks");
         Ok(())
     }
-    
+
     pub fn get_collection_stats(&self) -> Result<HashMap<String, usize>> {
         let mut stats = HashMap::new();
         stats.insert("total_points".to_string(), self.chunks.len());
-        
+
         Ok(stats)
     }
 }
 
 // Global RAG system instance
-static RAG_SYSTEM: once_cell::sync::Lazy<Arc<Mutex<Option<RAGSystem>>>> = 
+static RAG_SYSTEM: once_cell::sync::Lazy<Arc<Mutex<Option<RAGSystem>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
 // Public API functions for Tauri commands
@@ -388,8 +511,8 @@ pub async fn ingest_data_rag(data_files: Vec<serde_json::Value>) -> Result<Strin
 }
 
 pub async fn query_rag_system(
-    query: String, 
-    top_k: Option<usize>, 
+    query: String,
+    top_k: Option<usize>,
     similarity_threshold: Option<f32>,
     custom_query: Option<String>,
     time_range: Option<String>,
@@ -397,7 +520,7 @@ pub async fn query_rag_system(
     // If custom query is provided, first ingest the data
     if let Some(custom_sql) = custom_query {
         println!("[RAG] Query with custom SQL provided, ingesting data first");
-        
+
         // Initialize RAG system if not already initialized
         {
             let mut rag_system = RAG_SYSTEM.lock().unwrap();
@@ -406,22 +529,22 @@ pub async fn query_rag_system(
                 println!("[RAG] Initialized new RAG system for custom query");
             }
         }
-        
+
         // Ingest data using custom query
         let ingest_result = ingest_sql_data_rag(time_range, Some(custom_sql)).await?;
         println!("[RAG] Custom data ingestion result: {}", ingest_result);
     }
-    
+
     // Use default values if not provided
     let top_k_value = top_k.unwrap_or(5);
     let similarity_threshold_value = similarity_threshold.unwrap_or(0.1);
-    
+
     let rag_query = RAGQuery {
         query,
         top_k: top_k_value,
         similarity_threshold: similarity_threshold_value,
     };
-    
+
     let system_clone = {
         let rag_system = RAG_SYSTEM.lock().unwrap();
         if let Some(ref system) = *rag_system {
@@ -430,7 +553,7 @@ pub async fn query_rag_system(
             None
         }
     };
-    
+
     let system = system_clone.ok_or_else(|| anyhow::anyhow!("RAG system not initialized"))?;
     let response = system.query_rag(&rag_query).await?;
     Ok(response)
@@ -456,7 +579,7 @@ pub async fn get_rag_stats() -> Result<HashMap<String, usize>> {
         }
     };
     Ok(stats)
-} 
+}
 
 // Function to ingest data from SQL queries into RAG system
 pub async fn ingest_sql_data_rag(
@@ -464,16 +587,19 @@ pub async fn ingest_sql_data_rag(
     custom_query: Option<String>,
 ) -> Result<String> {
     use reqwest::Client;
-    
+
     let client = Client::new();
-    println!("[RAG] Ingesting data with time_range: {:?}, custom_query: {:?}", time_range, custom_query);
-    
+    println!(
+        "[RAG] Ingesting data with time_range: {:?}, custom_query: {:?}",
+        time_range, custom_query
+    );
+
     // If custom query is provided, use it directly
     if let Some(custom_sql) = custom_query {
         println!("[RAG] Using custom SQL query provided by user");
         println!("[RAG] Custom SQL Query: {}", custom_sql);
         let query = custom_sql;
-        
+
         println!("[RAG] Sending custom QL query to localhost:3030");
         let response = client
             .post("http://localhost:3030/raw_sql")
@@ -485,26 +611,31 @@ pub async fn ingest_sql_data_rag(
             .map_err(|e| anyhow::anyhow!("Failed to send SQL query: {}", e))?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(anyhow::anyhow!("SQL API error: {}", error_text));
         }
-        
-        let sql_data: Vec<serde_json::Value> = response.json()
+
+        let sql_data: Vec<serde_json::Value> = response
+            .json()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to parse SQL response: {}", e))?;
-        
+
         // Process custom query results using existing logic
         return process_sql_data_for_rag(sql_data).await;
     }
-    
+
     // Build SQL query to get comprehensive data
-    let time_filter = time_range.unwrap_or_else(|| "f.timestamp > datetime('now', '-30 days')".to_string());
-    
+    let time_filter =
+        time_range.unwrap_or_else(|| "f.timestamp > datetime('now', '-30 days')".to_string());
+
     // Check if this is a time usage query
-    let is_time_usage_query = time_filter.to_lowercase().contains("month") || 
-                              time_filter.to_lowercase().contains("time") ||
-                              time_filter.to_lowercase().contains("usage");
-    
+    let is_time_usage_query = time_filter.to_lowercase().contains("month")
+        || time_filter.to_lowercase().contains("time")
+        || time_filter.to_lowercase().contains("usage");
+
     let query = if is_time_usage_query {
         // For time usage queries, get aggregated data with better time calculation
         format!(
@@ -555,7 +686,7 @@ pub async fn ingest_sql_data_rag(
             time_filter
         )
     };
-    
+
     println!("[RAG] Sending SQL query to localhost:3030");
     let response = client
         .post("http://localhost:3030/raw_sql")
@@ -566,28 +697,31 @@ pub async fn ingest_sql_data_rag(
         .await
         .map_err(|e| anyhow::anyhow!("Failed to send SQL query: {}", e))?;
 
-    
     if !response.status().is_success() {
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(anyhow::anyhow!("SQL API error: {}", error_text));
     }
-    
-    let sql_data: Vec<serde_json::Value> = response.json()
+
+    let sql_data: Vec<serde_json::Value> = response
+        .json()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to parse SQL response: {}", e))?;
-    
+
     // Print SQL query results for debugging
     println!("=== SQL QUERY RESULTS ===");
     println!("Total rows returned: {}", sql_data.len());
     if !sql_data.is_empty() {
         println!("First row sample:");
         println!("{:#?}", sql_data[0]);
-        
+
         if sql_data.len() > 1 {
             println!("Last row sample:");
             println!("{:#?}", sql_data[sql_data.len() - 1]);
         }
-        
+
         // Print column names from first row
         if let Some(first_row) = sql_data.first() {
             if let Some(obj) = first_row.as_object() {
@@ -601,7 +735,7 @@ pub async fn ingest_sql_data_rag(
         println!("No data returned from SQL query");
     }
     println!("=== END SQL RESULTS ===");
-    
+
     // Initialize RAG system if not already initialized
     {
         let mut rag_system = RAG_SYSTEM.lock().unwrap();
@@ -610,21 +744,21 @@ pub async fn ingest_sql_data_rag(
             println!("[RAG] Initialized new RAG system");
         }
     }
-    
+
     // Convert SQL data to RAG chunks
     let mut total_chunks = 0;
     let mut ocr_chunks = 0;
     let mut audio_chunks = 0;
     let mut app_chunks = 0;
-    
+
     println!("[RAG] Processing {} SQL rows for ingestion", sql_data.len());
-    
+
     // Pre-calculate statistics for better context
     let mut app_stats = std::collections::HashMap::new();
     let mut website_stats = std::collections::HashMap::new();
     let mut audio_stats = std::collections::HashMap::new();
     let mut time_periods = Vec::new();
-    
+
     // First pass: collect statistics
     for row in &sql_data {
         let app_name = row["app_name"].as_str().unwrap_or("Unknown");
@@ -633,19 +767,19 @@ pub async fn ingest_sql_data_rag(
         let browser_url = row["browser_url"].as_str().unwrap_or("");
         let transcription = row["transcription"].as_str().unwrap_or("");
         let _ocr_text = row["ocr_text"].as_str().unwrap_or(""); // Prefix with underscore to suppress warning
-        
+
         // App usage statistics
-        let app_entry = app_stats.entry(app_name.to_string()).or_insert_with(|| {
-            std::collections::HashMap::new()
-        });
+        let app_entry = app_stats
+            .entry(app_name.to_string())
+            .or_insert_with(|| std::collections::HashMap::new());
         *app_entry.entry("count".to_string()).or_insert(0) += 1;
-        
+
         // Store unique windows count
         let windows_count = app_entry.entry("windows_count".to_string()).or_insert(0);
         if !window_name.is_empty() {
             *windows_count += 1;
         }
-        
+
         // Website statistics
         if !browser_url.is_empty() {
             if let Some(domain) = extract_domain(browser_url) {
@@ -653,39 +787,43 @@ pub async fn ingest_sql_data_rag(
                 *website_entry += 1;
             }
         }
-        
+
         // Audio statistics
         if !transcription.is_empty() {
             let audio_entry = audio_stats.entry(app_name.to_string()).or_insert(0);
             *audio_entry += 1;
         }
-        
+
         // Time periods
         if !timestamp.is_empty() {
             time_periods.push(timestamp.to_string());
         }
     }
-    
+
     // Calculate time range
     let time_range_text = if time_periods.len() >= 2 {
         let mut sorted_times = time_periods.clone();
         sorted_times.sort();
-        format!("{} to {}", sorted_times.first().unwrap(), sorted_times.last().unwrap())
+        format!(
+            "{} to {}",
+            sorted_times.first().unwrap(),
+            sorted_times.last().unwrap()
+        )
     } else {
         "Unknown time period".to_string()
     };
-    
+
     // Check if we have aggregated data (time usage query)
     if !sql_data.is_empty() && sql_data[0].get("frame_count").is_some() {
         // Process aggregated time usage data
         println!("[RAG] Processing aggregated time usage data");
-        
+
         // Calculate total screen time from individual app data
         let mut total_frames = 0;
         let mut total_span_minutes = 0.0;
         let mut all_first_seen = Vec::new();
         let mut all_last_seen = Vec::new();
-        
+
         for (index, row) in sql_data.iter().enumerate() {
             if let Some(app_name) = row["app_name"].as_str() {
                 // Process individual app data
@@ -694,7 +832,7 @@ pub async fn ingest_sql_data_rag(
                 let first_seen = row["first_seen"].as_str().unwrap_or("Unknown");
                 let last_seen = row["last_seen"].as_str().unwrap_or("Unknown");
                 let window_names = row["window_names"].as_str().unwrap_or("Unknown");
-                
+
                 // Accumulate totals for overall summary
                 total_frames += frame_count;
                 total_span_minutes += total_span_minutes_app;
@@ -704,15 +842,15 @@ pub async fn ingest_sql_data_rag(
                 if last_seen != "Unknown" {
                     all_last_seen.push(last_seen.to_string());
                 }
-                
+
                 // Estimate active time (simplified calculation)
                 let estimated_active_minutes = total_span_minutes_app * 0.25; // Assume 25% active usage
-                
+
                 let usage_text = format!(
                     "App: {} - Estimated Active Time: {:.1} minutes ({:.1} hours) - Total Span: {:.1} minutes - Frames: {} - Period: {} to {} - Windows: {}",
                     app_name, estimated_active_minutes, estimated_active_minutes / 60.0, total_span_minutes_app, frame_count, first_seen, last_seen, window_names
                 );
-                
+
                 let metadata = serde_json::json!({
                     "app_name": app_name,
                     "estimated_active_minutes": estimated_active_minutes,
@@ -722,7 +860,7 @@ pub async fn ingest_sql_data_rag(
                     "last_seen": last_seen,
                     "source_type": "time_usage"
                 });
-                
+
                 let chunks = {
                     let rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref system) = *rag_system {
@@ -731,7 +869,7 @@ pub async fn ingest_sql_data_rag(
                         return Err(anyhow::anyhow!("RAG system not initialized"));
                     }
                 };
-                
+
                 {
                     let mut rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref mut system) = *rag_system {
@@ -742,7 +880,7 @@ pub async fn ingest_sql_data_rag(
                 total_chunks += 1;
             }
         }
-        
+
         // Create total screen time summary
         if !sql_data.is_empty() {
             let unknown_str = "Unknown".to_string();
@@ -750,12 +888,12 @@ pub async fn ingest_sql_data_rag(
             let overall_last_seen = all_last_seen.iter().max().unwrap_or(&unknown_str);
             let unique_apps_used = sql_data.len() as u64;
             let total_active_minutes = total_span_minutes * 0.25; // Assume 25% active usage
-            
+
             let total_screen_text = format!(
                 "TOTAL SCREEN TIME SUMMARY - Total Active Time: {:.1} minutes ({:.1} hours) - Total Span: {:.1} minutes - Total Frames: {} - Period: {} to {} - Unique Apps Used: {}",
                 total_active_minutes, total_active_minutes / 60.0, total_span_minutes, total_frames, overall_first_seen, overall_last_seen, unique_apps_used
             );
-            
+
             let metadata = serde_json::json!({
                 "app_name": "TOTAL_SCREEN_TIME",
                 "total_active_minutes": total_active_minutes,
@@ -766,7 +904,7 @@ pub async fn ingest_sql_data_rag(
                 "unique_apps_used": unique_apps_used,
                 "source_type": "total_screen_time"
             });
-            
+
             let chunks = {
                 let rag_system = RAG_SYSTEM.lock().unwrap();
                 if let Some(ref system) = *rag_system {
@@ -775,7 +913,7 @@ pub async fn ingest_sql_data_rag(
                     return Err(anyhow::anyhow!("RAG system not initialized"));
                 }
             };
-            
+
             {
                 let mut rag_system = RAG_SYSTEM.lock().unwrap();
                 if let Some(ref mut system) = *rag_system {
@@ -784,85 +922,122 @@ pub async fn ingest_sql_data_rag(
             }
             total_chunks += 1;
         }
-        
+
         println!("[RAG] Ingestion Summary:");
         println!("[RAG]   Total apps processed: {}", sql_data.len());
         println!("[RAG]   Time usage chunks created: {}", app_chunks);
         println!("[RAG]   Total chunks: {}", total_chunks);
-        
-        return Ok(format!("Successfully ingested {} time usage chunks into RAG system", total_chunks));
+
+        return Ok(format!(
+            "Successfully ingested {} time usage chunks into RAG system",
+            total_chunks
+        ));
     }
-    
+
     // Create summary chunks
     let mut summary_chunks = Vec::new();
-    
+
     // App usage summary
     let mut app_summary_parts = Vec::new();
     for (app_name, stats) in &app_stats {
         let count = stats.get("count").unwrap_or(&0);
         let windows_count = stats.get("windows_count").unwrap_or(&0);
-        app_summary_parts.push(format!("{} ({} frames, {} windows)", app_name, count, windows_count));
+        app_summary_parts.push(format!(
+            "{} ({} frames, {} windows)",
+            app_name, count, windows_count
+        ));
     }
     app_summary_parts.sort_by(|a, b| {
-        let count_a = a.split('(').nth(1).unwrap_or("0").split(' ').next().unwrap_or("0").parse::<i32>().unwrap_or(0);
-        let count_b = b.split('(').nth(1).unwrap_or("0").split(' ').next().unwrap_or("0").parse::<i32>().unwrap_or(0);
+        let count_a = a
+            .split('(')
+            .nth(1)
+            .unwrap_or("0")
+            .split(' ')
+            .next()
+            .unwrap_or("0")
+            .parse::<i32>()
+            .unwrap_or(0);
+        let count_b = b
+            .split('(')
+            .nth(1)
+            .unwrap_or("0")
+            .split(' ')
+            .next()
+            .unwrap_or("0")
+            .parse::<i32>()
+            .unwrap_or(0);
         count_b.cmp(&count_a)
     });
-    
+
     let app_summary = format!(
         "App Usage Summary ({} apps): {}",
         app_stats.len(),
-        app_summary_parts.iter().take(10).cloned().collect::<Vec<_>>().join(", ")
+        app_summary_parts
+            .iter()
+            .take(10)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
     );
-    
+
     let app_summary_metadata = serde_json::json!({
         "source_type": "app_summary",
         "total_apps": app_stats.len(),
         "time_range": time_range_text
     });
-    
+
     summary_chunks.push((app_summary, app_summary_metadata));
-    
+
     // Website usage summary
     if !website_stats.is_empty() {
         let mut website_list: Vec<_> = website_stats.iter().collect();
         website_list.sort_by(|a, b| b.1.cmp(a.1));
-        
+
         let website_summary = format!(
             "Website Usage ({} domains): {}",
             website_stats.len(),
-            website_list.iter().take(10).map(|(domain, count)| format!("{} ({} visits)", domain, count)).collect::<Vec<_>>().join(", ")
+            website_list
+                .iter()
+                .take(10)
+                .map(|(domain, count)| format!("{} ({} visits)", domain, count))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
-        
+
         let website_summary_metadata = serde_json::json!({
             "source_type": "website_summary",
             "total_domains": website_stats.len(),
             "time_range": time_range_text
         });
-        
+
         summary_chunks.push((website_summary, website_summary_metadata));
     }
-    
+
     // Audio activity summary
     if !audio_stats.is_empty() {
         let mut audio_list: Vec<_> = audio_stats.iter().collect();
         audio_list.sort_by(|a, b| b.1.cmp(a.1));
-        
+
         let audio_summary = format!(
             "Audio Activity ({} apps with audio): {}",
             audio_stats.len(),
-            audio_list.iter().take(5).map(|(app, count)| format!("{} ({} audio clips)", app, count)).collect::<Vec<_>>().join(", ")
+            audio_list
+                .iter()
+                .take(5)
+                .map(|(app, count)| format!("{} ({} audio clips)", app, count))
+                .collect::<Vec<_>>()
+                .join(", ")
         );
-        
+
         let audio_summary_metadata = serde_json::json!({
             "source_type": "audio_summary",
             "total_audio_apps": audio_stats.len(),
             "time_range": time_range_text
         });
-        
+
         summary_chunks.push((audio_summary, audio_summary_metadata));
     }
-    
+
     // Add summary chunks to RAG system
     for (summary_text, metadata) in summary_chunks {
         let chunks = {
@@ -873,7 +1048,7 @@ pub async fn ingest_sql_data_rag(
                 return Err(anyhow::anyhow!("RAG system not initialized"));
             }
         };
-        
+
         {
             let mut rag_system = RAG_SYSTEM.lock().unwrap();
             if let Some(ref mut system) = *rag_system {
@@ -882,7 +1057,7 @@ pub async fn ingest_sql_data_rag(
         }
         total_chunks += 1;
     }
-    
+
     // Process individual rows for detailed context
     for (index, row) in sql_data.iter().enumerate() {
         // Process OCR text with enhanced context
@@ -893,7 +1068,7 @@ pub async fn ingest_sql_data_rag(
                     row["app_name"].as_str().unwrap_or("Unknown"),
                     ocr_text
                 );
-                
+
                 let metadata = serde_json::json!({
                     "app_name": row["app_name"].as_str().unwrap_or("Unknown"),
                     "timestamp": row["timestamp"].as_str(),
@@ -902,7 +1077,7 @@ pub async fn ingest_sql_data_rag(
                     "source_type": "ocr",
                     "ocr_length": row["ocr_text_length"].as_u64().unwrap_or(0)
                 });
-                
+
                 let chunks = {
                     let rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref system) = *rag_system {
@@ -911,7 +1086,7 @@ pub async fn ingest_sql_data_rag(
                         return Err(anyhow::anyhow!("RAG system not initialized"));
                     }
                 };
-                
+
                 {
                     let mut rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref mut system) = *rag_system {
@@ -922,7 +1097,7 @@ pub async fn ingest_sql_data_rag(
                 total_chunks += 1;
             }
         }
-        
+
         // Process audio transcriptions with enhanced context
         if let Some(transcription) = row["transcription"].as_str() {
             if !transcription.is_empty() {
@@ -932,7 +1107,7 @@ pub async fn ingest_sql_data_rag(
                     row["device"].as_str().unwrap_or("Unknown"),
                     transcription
                 );
-                
+
                 let metadata = serde_json::json!({
                     "app_name": row["app_name"].as_str().unwrap_or("Unknown"),
                     "timestamp": row["timestamp"].as_str(),
@@ -942,7 +1117,7 @@ pub async fn ingest_sql_data_rag(
                     "end_time": row["end_time"].as_f64(),
                     "source_type": "audio"
                 });
-                
+
                 let chunks = {
                     let rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref system) = *rag_system {
@@ -951,7 +1126,7 @@ pub async fn ingest_sql_data_rag(
                         return Err(anyhow::anyhow!("RAG system not initialized"));
                     }
                 };
-                
+
                 {
                     let mut rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref mut system) = *rag_system {
@@ -962,7 +1137,7 @@ pub async fn ingest_sql_data_rag(
                 total_chunks += 1;
             }
         }
-        
+
         // Process app usage patterns with enhanced context
         if let Some(app_name) = row["app_name"].as_str() {
             if !app_name.is_empty() {
@@ -972,7 +1147,7 @@ pub async fn ingest_sql_data_rag(
                 } else {
                     "".to_string()
                 };
-                
+
                 let enhanced_text = format!(
                     "App Activity: {} - Window: {} - Timestamp: {}{}",
                     app_name,
@@ -980,7 +1155,7 @@ pub async fn ingest_sql_data_rag(
                     row["timestamp"].as_str().unwrap_or("Unknown"),
                     url_info
                 );
-                
+
                 let metadata = serde_json::json!({
                     "app_name": app_name,
                     "timestamp": row["timestamp"].as_str(),
@@ -989,7 +1164,7 @@ pub async fn ingest_sql_data_rag(
                     "frame_id": row["frame_id"].as_u64(),
                     "source_type": "app_usage"
                 });
-                
+
                 let chunks = {
                     let rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref system) = *rag_system {
@@ -998,7 +1173,7 @@ pub async fn ingest_sql_data_rag(
                         return Err(anyhow::anyhow!("RAG system not initialized"));
                     }
                 };
-                
+
                 {
                     let mut rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref mut system) = *rag_system {
@@ -1009,29 +1184,39 @@ pub async fn ingest_sql_data_rag(
                 total_chunks += 1;
             }
         }
-        
+
         // Progress logging every 1000 rows
         if (index + 1) % 1000 == 0 {
             println!("[RAG] Processed {} rows...", index + 1);
         }
     }
-    
+
     println!("[RAG] Ingestion Summary:");
     println!("[RAG]   Total rows processed: {}", sql_data.len());
     println!("[RAG]   OCR chunks created: {}", ocr_chunks);
     println!("[RAG]   Audio chunks created: {}", audio_chunks);
     println!("[RAG]   App usage chunks created: {}", app_chunks);
     println!("[RAG]   Total chunks: {}", total_chunks);
-    
-    println!("[RAG] Successfully ingested {} chunks into global RAG system", total_chunks);
-    
-    Ok(format!("Successfully ingested {} data chunks into RAG system", total_chunks))
+
+    println!(
+        "[RAG] Successfully ingested {} chunks into global RAG system",
+        total_chunks
+    );
+
+    Ok(format!(
+        "Successfully ingested {} data chunks into RAG system",
+        total_chunks
+    ))
 }
 
 // Helper function to extract domain from URL
 fn extract_domain(url: &str) -> Option<String> {
     if url.starts_with("http://") || url.starts_with("https://") {
-        url.split("//").nth(1)?.split("/").next().map(|s| s.to_string())
+        url.split("//")
+            .nth(1)?
+            .split("/")
+            .next()
+            .map(|s| s.to_string())
     } else {
         None
     }
@@ -1047,15 +1232,15 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
             println!("[RAG] Initialized new RAG system");
         }
     }
-    
+
     // Convert SQL data to RAG chunks
     let mut total_chunks = 0;
     let mut ocr_chunks = 0;
     let mut audio_chunks = 0;
     let mut app_chunks = 0;
-    
+
     println!("[RAG] Processing {} SQL rows for ingestion", sql_data.len());
-    
+
     // Process individual rows for detailed context
     for (index, row) in sql_data.iter().enumerate() {
         // Process OCR text with enhanced context
@@ -1066,7 +1251,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                     row["app_name"].as_str().unwrap_or("Unknown"),
                     ocr_text
                 );
-                
+
                 let metadata = serde_json::json!({
                     "app_name": row["app_name"].as_str().unwrap_or("Unknown"),
                     "timestamp": row["timestamp"].as_str(),
@@ -1075,7 +1260,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                     "source_type": "ocr",
                     "ocr_length": row["ocr_text_length"].as_u64().unwrap_or(0)
                 });
-                
+
                 let chunks = {
                     let rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref system) = *rag_system {
@@ -1084,7 +1269,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                         return Err(anyhow::anyhow!("RAG system not initialized"));
                     }
                 };
-                
+
                 {
                     let mut rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref mut system) = *rag_system {
@@ -1095,7 +1280,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                 total_chunks += 1;
             }
         }
-        
+
         // Process audio transcriptions with enhanced context
         if let Some(transcription) = row["transcription"].as_str() {
             if !transcription.is_empty() {
@@ -1105,7 +1290,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                     row["device"].as_str().unwrap_or("Unknown"),
                     transcription
                 );
-                
+
                 let metadata = serde_json::json!({
                     "app_name": row["app_name"].as_str().unwrap_or("Unknown"),
                     "timestamp": row["timestamp"].as_str(),
@@ -1115,7 +1300,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                     "end_time": row["end_time"].as_f64(),
                     "source_type": "audio"
                 });
-                
+
                 let chunks = {
                     let rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref system) = *rag_system {
@@ -1124,7 +1309,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                         return Err(anyhow::anyhow!("RAG system not initialized"));
                     }
                 };
-                
+
                 {
                     let mut rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref mut system) = *rag_system {
@@ -1135,7 +1320,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                 total_chunks += 1;
             }
         }
-        
+
         // Process app usage patterns with enhanced context
         if let Some(app_name) = row["app_name"].as_str() {
             if !app_name.is_empty() {
@@ -1145,7 +1330,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                 } else {
                     "".to_string()
                 };
-                
+
                 let enhanced_text = format!(
                     "App Activity: {} - Window: {} - Timestamp: {}{}",
                     app_name,
@@ -1153,7 +1338,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                     row["timestamp"].as_str().unwrap_or("Unknown"),
                     url_info
                 );
-                
+
                 let metadata = serde_json::json!({
                     "app_name": app_name,
                     "timestamp": row["timestamp"].as_str(),
@@ -1162,7 +1347,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                     "frame_id": row["frame_id"].as_u64(),
                     "source_type": "app_usage"
                 });
-                
+
                 let chunks = {
                     let rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref system) = *rag_system {
@@ -1171,7 +1356,7 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                         return Err(anyhow::anyhow!("RAG system not initialized"));
                     }
                 };
-                
+
                 {
                     let mut rag_system = RAG_SYSTEM.lock().unwrap();
                     if let Some(ref mut system) = *rag_system {
@@ -1182,41 +1367,50 @@ async fn process_sql_data_for_rag(sql_data: Vec<serde_json::Value>) -> Result<St
                 total_chunks += 1;
             }
         }
-        
+
         // Progress logging every 1000 rows
         if (index + 1) % 1000 == 0 {
             println!("[RAG] Processed {} rows...", index + 1);
         }
     }
-    
+
     println!("[RAG] Ingestion Summary:");
     println!("[RAG]   Total rows processed: {}", sql_data.len());
     println!("[RAG]   OCR chunks created: {}", ocr_chunks);
     println!("[RAG]   Audio chunks created: {}", audio_chunks);
     println!("[RAG]   App usage chunks created: {}", app_chunks);
     println!("[RAG]   Total chunks: {}", total_chunks);
-    
-    println!("[RAG] Successfully ingested {} chunks into global RAG system", total_chunks);
-    
-    Ok(format!("Successfully ingested {} data chunks into RAG system", total_chunks))
+
+    println!(
+        "[RAG] Successfully ingested {} chunks into global RAG system",
+        total_chunks
+    );
+
+    Ok(format!(
+        "Successfully ingested {} data chunks into RAG system",
+        total_chunks
+    ))
 }
 
 // Pure Rust analysis function without AI dependency
 pub async fn perform_pure_rust_analysis(time_range: Option<(String, String)>) -> Result<String> {
     // Build the comprehensive SQL query with time range filtering
     let where_condition = if let Some((start, end)) = time_range {
-        format!("f.timestamp >= datetime('{}') AND f.timestamp <= datetime('{}')", start, end)
+        format!(
+            "f.timestamp >= datetime('{}') AND f.timestamp <= datetime('{}')",
+            start, end
+        )
     } else {
         "f.timestamp > datetime('now', '-1 day')".to_string()
     };
-    
+
     let sql_query = format!(
         "SELECT f.id AS frame_id, f.timestamp, f.name AS video_file, f.window_name, f.app_name, f.browser_url, ac.file_path AS audio_file, at.transcription, at.device, at.is_input_device, at.transcription_engine, at.start_time, at.end_time, o.text AS ocr_text, o.text_length AS ocr_text_length, COUNT(*) OVER () AS total_count FROM frames f LEFT JOIN audio_chunks ac ON f.video_chunk_id = ac.id LEFT JOIN audio_transcriptions at ON at.audio_chunk_id = ac.id LEFT JOIN ocr_text o ON o.frame_id = f.id WHERE {} ORDER BY f.timestamp DESC LIMIT 10000;",
         where_condition
     );
-    
+
     println!("[PURE_RUST] Executing SQL query: {}", sql_query);
-    
+
     // Fetch data from screenpipe API
     let response = reqwest::Client::new()
         .post("http://localhost:3030/raw_sql")
@@ -1224,31 +1418,37 @@ pub async fn perform_pure_rust_analysis(time_range: Option<(String, String)>) ->
         .send()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to send SQL request: {}", e))?;
-    
+
     if !response.status().is_success() {
-        return Err(anyhow::anyhow!("SQL query failed with status: {}", response.status()));
+        return Err(anyhow::anyhow!(
+            "SQL query failed with status: {}",
+            response.status()
+        ));
     }
-    
+
     let sql_data: Vec<serde_json::Value> = response
         .json()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to parse SQL response: {}", e))?;
-    
-    println!("[PURE_RUST] Retrieved {} rows from database", sql_data.len());
-    
+
+    println!(
+        "[PURE_RUST] Retrieved {} rows from database",
+        sql_data.len()
+    );
+
     if sql_data.is_empty() {
         return Ok("No data available for the selected time range".to_string());
     }
-    
+
     // Perform pure Rust statistical analysis
     let analysis = analyze_sql_data_statistically(&sql_data)?;
-    
+
     Ok(analysis)
 }
 
 fn analyze_sql_data_statistically(sql_data: &[serde_json::Value]) -> Result<String> {
     use std::collections::HashMap;
-    
+
     // Data structures for analysis
     let mut app_usage = HashMap::new();
     let mut window_analysis = HashMap::new();
@@ -1259,7 +1459,7 @@ fn analyze_sql_data_statistically(sql_data: &[serde_json::Value]) -> Result<Stri
     let mut ocr_content_analysis = HashMap::new();
     let mut audio_analysis = HashMap::new();
     let mut app_time_tracking = HashMap::new(); // Track time spent on each app
-    
+
     let mut total_ocr_chars = 0;
     let mut total_audio_minutes = 0.0;
     let mut communication_indicators = 0;
@@ -1267,11 +1467,11 @@ fn analyze_sql_data_statistically(sql_data: &[serde_json::Value]) -> Result<Stri
     let mut browser_usage = 0;
     let mut total_session_minutes = 0.0;
     let mut timestamps = Vec::new();
-    
+
     // Track session start and end times
     let mut session_start: Option<String> = None;
     let mut session_end: Option<String> = None;
-    
+
     // Process each row from the database
     for row in sql_data {
         let app_name = row["app_name"].as_str().unwrap_or("Unknown");
@@ -1282,7 +1482,7 @@ fn analyze_sql_data_statistically(sql_data: &[serde_json::Value]) -> Result<Stri
         let timestamp = row["timestamp"].as_str().unwrap_or("");
         let audio_start = row["start_time"].as_f64().unwrap_or(0.0);
         let audio_end = row["end_time"].as_f64().unwrap_or(0.0);
-        
+
         // Track timestamps for session analysis
         if !timestamp.is_empty() {
             timestamps.push(timestamp.to_string());
@@ -1291,20 +1491,24 @@ fn analyze_sql_data_statistically(sql_data: &[serde_json::Value]) -> Result<Stri
             }
             session_end = Some(timestamp.to_string());
         }
-        
+
         // App usage tracking
-        let app_entry = app_usage.entry(app_name.to_string()).or_insert((0, 0, Vec::new()));
+        let app_entry = app_usage
+            .entry(app_name.to_string())
+            .or_insert((0, 0, Vec::new()));
         app_entry.0 += 1; // count
         app_entry.1 += ocr_text.len() + transcription.len(); // content length
-        
+
         // Track app time (estimate 1 minute per interaction)
         *app_time_tracking.entry(app_name.to_string()).or_insert(0.0) += 1.0;
-        
+
         // Window analysis
         if !window_name.is_empty() && window_name != "Unknown" {
-            *window_analysis.entry(format!("{} - {}", app_name, window_name)).or_insert(0) += 1;
+            *window_analysis
+                .entry(format!("{} - {}", app_name, window_name))
+                .or_insert(0) += 1;
         }
-        
+
         // Website domain extraction and time tracking
         if !browser_url.is_empty() {
             browser_usage += 1;
@@ -1314,30 +1518,40 @@ fn analyze_sql_data_statistically(sql_data: &[serde_json::Value]) -> Result<Stri
                 *website_time_tracking.entry(domain).or_insert(0.0) += 2.0;
             }
         }
-        
+
         // Time distribution (extract hour from timestamp)
         if !timestamp.is_empty() {
             if let Some(hour) = extract_hour_from_timestamp(timestamp) {
                 *time_distribution.entry(hour).or_insert(0) += 1;
             }
         }
-        
+
         // OCR content analysis
         if !ocr_text.is_empty() {
             total_ocr_chars += ocr_text.len();
-            analyze_content_keywords(ocr_text, &mut productivity_indicators, &mut coding_indicators, &mut communication_indicators);
-            
+            analyze_content_keywords(
+                ocr_text,
+                &mut productivity_indicators,
+                &mut coding_indicators,
+                &mut communication_indicators,
+            );
+
             let content_type = classify_ocr_content(ocr_text);
             *ocr_content_analysis.entry(content_type).or_insert(0) += 1;
         }
-        
+
         // Audio analysis
         if !transcription.is_empty() {
             let duration_minutes = (audio_end - audio_start) / 60.0;
             total_audio_minutes += duration_minutes;
-            
-            analyze_content_keywords(transcription, &mut productivity_indicators, &mut coding_indicators, &mut communication_indicators);
-            
+
+            analyze_content_keywords(
+                transcription,
+                &mut productivity_indicators,
+                &mut coding_indicators,
+                &mut communication_indicators,
+            );
+
             let audio_type = if transcription.to_lowercase().contains("meeting") {
                 "meeting"
             } else if transcription.len() > 100 {
@@ -1348,14 +1562,14 @@ fn analyze_sql_data_statistically(sql_data: &[serde_json::Value]) -> Result<Stri
             *audio_analysis.entry(audio_type.to_string()).or_insert(0) += 1;
         }
     }
-    
+
     // Calculate total session time
     if let (Some(start), Some(end)) = (&session_start, &session_end) {
         if let (Ok(start_time), Ok(end_time)) = (parse_timestamp(start), parse_timestamp(end)) {
             total_session_minutes = (end_time - start_time) / 60.0;
         }
     }
-    
+
     // Generate comprehensive analysis
     generate_statistical_report(
         sql_data.len(),
@@ -1386,24 +1600,107 @@ fn analyze_content_keywords(
     communication_indicators: &mut usize,
 ) {
     let content_lower = content.to_lowercase();
-    
+
     // Productivity keywords
     let productivity_keywords = [
-        ("coding", vec!["function", "class", "import", "export", "const", "let", "var", "=>", "async", "await", "def", "return", "if", "else", "for", "while"]),
-        ("communication", vec!["message", "email", "chat", "discord", "slack", "teams", "zoom", "call", "meeting", "hello", "hi", "thanks"]),
-        ("documentation", vec!["readme", "docs", "wiki", "documentation", "manual", "guide", "tutorial", "help"]),
-        ("research", vec!["stackoverflow", "github", "google", "search", "learn", "how to", "what is", "why"]),
-        ("design", vec!["figma", "photoshop", "illustrator", "design", "ui", "ux", "interface", "layout"]),
-        ("data", vec!["database", "sql", "query", "data", "analytics", "chart", "table", "select", "insert"]),
-        ("productivity", vec!["todo", "task", "deadline", "project", "plan", "schedule", "calendar"]),
-        ("debugging", vec!["error", "bug", "debug", "exception", "fix", "issue", "problem", "crash"]),
+        (
+            "coding",
+            vec![
+                "function", "class", "import", "export", "const", "let", "var", "=>", "async",
+                "await", "def", "return", "if", "else", "for", "while",
+            ],
+        ),
+        (
+            "communication",
+            vec![
+                "message", "email", "chat", "discord", "slack", "teams", "zoom", "call", "meeting",
+                "hello", "hi", "thanks",
+            ],
+        ),
+        (
+            "documentation",
+            vec![
+                "readme",
+                "docs",
+                "wiki",
+                "documentation",
+                "manual",
+                "guide",
+                "tutorial",
+                "help",
+            ],
+        ),
+        (
+            "research",
+            vec![
+                "stackoverflow",
+                "github",
+                "google",
+                "search",
+                "learn",
+                "how to",
+                "what is",
+                "why",
+            ],
+        ),
+        (
+            "design",
+            vec![
+                "figma",
+                "photoshop",
+                "illustrator",
+                "design",
+                "ui",
+                "ux",
+                "interface",
+                "layout",
+            ],
+        ),
+        (
+            "data",
+            vec![
+                "database",
+                "sql",
+                "query",
+                "data",
+                "analytics",
+                "chart",
+                "table",
+                "select",
+                "insert",
+            ],
+        ),
+        (
+            "productivity",
+            vec![
+                "todo", "task", "deadline", "project", "plan", "schedule", "calendar",
+            ],
+        ),
+        (
+            "debugging",
+            vec![
+                "error",
+                "bug",
+                "debug",
+                "exception",
+                "fix",
+                "issue",
+                "problem",
+                "crash",
+            ],
+        ),
     ];
-    
+
     for (category, keywords) in productivity_keywords.iter() {
-        let matches = keywords.iter().filter(|&&kw| content_lower.contains(kw)).count();
+        let matches = keywords
+            .iter()
+            .filter(|&&kw| content_lower.contains(kw))
+            .count();
         if matches > 0 {
-            *productivity_indicators.entry(category.to_string()).or_insert(0) += matches;
-            
+            *productivity_indicators
+                .entry(category.to_string())
+                .or_insert(0) += matches;
+
             if *category == "coding" || *category == "debugging" {
                 *coding_indicators += matches;
             }
@@ -1417,7 +1714,7 @@ fn analyze_content_keywords(
 fn classify_ocr_content(text: &str) -> String {
     let text_lower = text.to_lowercase();
     let word_count = text.split_whitespace().count();
-    
+
     if text_lower.contains("error") || text_lower.contains("exception") {
         "error_messages".to_string()
     } else if word_count > 50 {
@@ -1469,129 +1766,171 @@ fn generate_statistical_report(
     _session_end: &Option<String>,
 ) -> Result<String> {
     let mut analysis = String::new();
-    
+
     analysis.push_str("# 📊 **Activity Analysis Report**\n\n");
-    analysis.push_str(&format!("*Generated on {}*\n\n", chrono::Utc::now().format("%B %d, %Y at %I:%M %p UTC")));
-    
+    analysis.push_str(&format!(
+        "*Generated on {}*\n\n",
+        chrono::Utc::now().format("%B %d, %Y at %I:%M %p UTC")
+    ));
+
     // Quick Stats Overview
     analysis.push_str("## 📈 **Quick Stats**\n");
     analysis.push_str(&format!("**Total Activities**: {} records\n", total_rows));
     analysis.push_str(&format!("**Applications Used**: {}\n", app_usage.len()));
-    analysis.push_str(&format!("**Text Content**: {} characters\n", total_ocr_chars));
-    analysis.push_str(&format!("**Audio Content**: {:.0} minutes\n", total_audio_minutes));
+    analysis.push_str(&format!(
+        "**Text Content**: {} characters\n",
+        total_ocr_chars
+    ));
+    analysis.push_str(&format!(
+        "**Audio Content**: {:.0} minutes\n",
+        total_audio_minutes
+    ));
     analysis.push_str(&format!("**Web Visits**: {}\n", browser_usage));
-    
+
     // Session time information
     if total_session_minutes > 0.0 {
-        analysis.push_str(&format!("**Session Duration**: {:.0} minutes ({:.1} hours)\n", total_session_minutes, total_session_minutes / 60.0));
+        analysis.push_str(&format!(
+            "**Session Duration**: {:.0} minutes ({:.1} hours)\n",
+            total_session_minutes,
+            total_session_minutes / 60.0
+        ));
     }
     analysis.push_str("\n");
-    
+
     // 2. Most Used Applications
     analysis.push_str("## 💻 **Most Used Applications**\n");
     let mut sorted_apps: Vec<_> = app_usage.iter().collect();
-    sorted_apps.sort_by(|a, b| b.1.0.cmp(&a.1.0));
-    
+    sorted_apps.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+
     for (_i, (app, (count, _content_len, _))) in sorted_apps.iter().take(8).enumerate() {
         let percentage = (*count as f64 / total_rows as f64) * 100.0;
-        analysis.push_str(&format!("**{}** - {} activities ({:.0}%)\n", 
-                                 app, count, percentage));
+        analysis.push_str(&format!(
+            "**{}** - {} activities ({:.0}%)\n",
+            app, count, percentage
+        ));
     }
     analysis.push_str("\n");
-    
+
     // 3. Peak Activity Hours
     if !time_distribution.is_empty() {
         analysis.push_str("## ⏰ **Peak Activity Hours**\n");
         let mut sorted_hours: Vec<_> = time_distribution.iter().collect();
         sorted_hours.sort_by(|a, b| b.1.cmp(&a.1));
-        
+
         for (hour, count) in sorted_hours.iter().take(5) {
             let percentage = (**count as f64 / total_rows as f64) * 100.0;
-            analysis.push_str(&format!("**{}:00** - {} activities ({:.0}%)\n", hour, count, percentage));
+            analysis.push_str(&format!(
+                "**{}:00** - {} activities ({:.0}%)\n",
+                hour, count, percentage
+            ));
         }
         analysis.push_str("\n");
     }
-    
+
     // 4. Activity Types
     analysis.push_str("## 🎯 **Activity Types**\n");
     if !productivity_indicators.is_empty() {
         let mut sorted_productivity: Vec<_> = productivity_indicators.iter().collect();
         sorted_productivity.sort_by(|a, b| b.1.cmp(&a.1));
-        
+
         for (category, count) in sorted_productivity.iter().take(6) {
-            analysis.push_str(&format!("**{}** - {} activities\n", 
-                                     category.replace("_", " ").to_title_case(), count));
+            analysis.push_str(&format!(
+                "**{}** - {} activities\n",
+                category.replace("_", " ").to_title_case(),
+                count
+            ));
         }
     } else {
         analysis.push_str("No specific activity patterns detected\n");
     }
     analysis.push_str("\n");
-    
+
     // 5. Content Overview
     analysis.push_str("## 📄 **Content Overview**\n");
     for (content_type, count) in ocr_content_analysis.iter() {
         let percentage = (*count as f64 / total_rows as f64) * 100.0;
-        analysis.push_str(&format!("**{}** - {} items ({:.0}%)\n", 
-                                 content_type.replace("_", " ").to_title_case(), count, percentage));
+        analysis.push_str(&format!(
+            "**{}** - {} items ({:.0}%)\n",
+            content_type.replace("_", " ").to_title_case(),
+            count,
+            percentage
+        ));
     }
-    
+
     if !audio_analysis.is_empty() {
         analysis.push_str("\n**Audio:**\n");
         for (audio_type, count) in audio_analysis.iter() {
-            analysis.push_str(&format!("**{}** - {} recordings\n", 
-                                     audio_type.replace("_", " ").to_title_case(), count));
+            analysis.push_str(&format!(
+                "**{}** - {} recordings\n",
+                audio_type.replace("_", " ").to_title_case(),
+                count
+            ));
         }
     }
     analysis.push_str("\n");
-    
+
     // 6. Time Breakdown
     if total_session_minutes > 0.0 {
         analysis.push_str("## ⏱️ **Time Breakdown**\n");
-        analysis.push_str(&format!("**Session Duration**: {:.0} minutes ({:.1} hours)\n", total_session_minutes, total_session_minutes / 60.0));
-        analysis.push_str(&format!("**Activity Rate**: {:.0} activities per minute\n", total_rows as f64 / total_session_minutes));
+        analysis.push_str(&format!(
+            "**Session Duration**: {:.0} minutes ({:.1} hours)\n",
+            total_session_minutes,
+            total_session_minutes / 60.0
+        ));
+        analysis.push_str(&format!(
+            "**Activity Rate**: {:.0} activities per minute\n",
+            total_rows as f64 / total_session_minutes
+        ));
         analysis.push_str("\n");
     }
-    
+
     // 7. App Time Usage
     if !app_time_tracking.is_empty() {
         analysis.push_str("## 🕐 **App Time Usage**\n");
         let mut sorted_app_time: Vec<_> = app_time_tracking.iter().collect();
         sorted_app_time.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        
+
         for (_i, (app, minutes)) in sorted_app_time.iter().take(6).enumerate() {
             let percentage = (*minutes / total_session_minutes) * 100.0;
-            analysis.push_str(&format!("**{}** - {:.0} minutes ({:.0}%)\n", 
-                                     app, minutes, percentage));
+            analysis.push_str(&format!(
+                "**{}** - {:.0} minutes ({:.0}%)\n",
+                app, minutes, percentage
+            ));
         }
         analysis.push_str("\n");
     }
-    
+
     if !audio_analysis.is_empty() {
         analysis.push_str("\n**Audio Content:**\n");
         for (audio_type, count) in audio_analysis.iter() {
-            analysis.push_str(&format!("- **{}**: {} instances\n", 
-                                     audio_type.replace("_", " ").to_title_case(), count));
+            analysis.push_str(&format!(
+                "- **{}**: {} instances\n",
+                audio_type.replace("_", " ").to_title_case(),
+                count
+            ));
         }
     }
     analysis.push_str("\n");
-    
+
     // 8. Top Websites
     if !website_domains.is_empty() {
         analysis.push_str("## 🌐 **Top Websites**\n");
         let mut sorted_websites: Vec<_> = website_domains.iter().collect();
         sorted_websites.sort_by(|a, b| b.1.cmp(&a.1));
-        
+
         for (_i, (domain, count)) in sorted_websites.iter().take(8).enumerate() {
             let time_spent = website_time_tracking.get(*domain).unwrap_or(&0.0);
-            analysis.push_str(&format!("**{}** - {} visits ({:.0} minutes)\n", 
-                                     domain, count, time_spent));
+            analysis.push_str(&format!(
+                "**{}** - {} visits ({:.0} minutes)\n",
+                domain, count, time_spent
+            ));
         }
         analysis.push_str("\n");
     }
-    
+
     // 9. Key Insights
     analysis.push_str("## 💡 **Key Insights**\n");
-    
+
     if coding_indicators > 50 {
         analysis.push_str("🔧 **High Development Activity** - Extensive coding work detected\n");
     } else if coding_indicators > 15 {
@@ -1599,40 +1938,53 @@ fn generate_statistical_report(
     } else if coding_indicators > 0 {
         analysis.push_str("⚡ **Light Development Activity** - Some coding work\n");
     }
-    
+
     if communication_indicators > 30 {
         analysis.push_str("💬 **High Communication** - Significant messaging/collaboration\n");
     } else if communication_indicators > 10 {
         analysis.push_str("📞 **Moderate Communication** - Regular interactions\n");
     }
-    
+
     if total_audio_minutes > 60.0 {
-        analysis.push_str(&format!("🎤 **Audio Heavy Session** - {:.0} minutes of audio\n", total_audio_minutes));
+        analysis.push_str(&format!(
+            "🎤 **Audio Heavy Session** - {:.0} minutes of audio\n",
+            total_audio_minutes
+        ));
     }
-    
-    let avg_content_per_entry = if total_rows > 0 { total_ocr_chars / total_rows } else { 0 };
+
+    let avg_content_per_entry = if total_rows > 0 {
+        total_ocr_chars / total_rows
+    } else {
+        0
+    };
     if avg_content_per_entry > 200 {
         analysis.push_str("📄 **Content Rich** - High text content per activity\n");
     }
-    
+
     if app_usage.len() > 8 {
         analysis.push_str("🔄 **Multi-Tasking** - Many applications used\n");
     } else if app_usage.len() < 4 {
         analysis.push_str("🎯 **Focused Work** - Limited app switching\n");
     }
-    
+
     // 10. Summary
     analysis.push_str("\n## 📋 **Summary**\n");
-    let primary_app = sorted_apps.first().map(|(app, _)| app.as_str()).unwrap_or("Unknown");
-    let primary_productivity = productivity_indicators.iter()
+    let primary_app = sorted_apps
+        .first()
+        .map(|(app, _)| app.as_str())
+        .unwrap_or("Unknown");
+    let primary_productivity = productivity_indicators
+        .iter()
         .max_by_key(|(_, count)| *count)
         .map(|(cat, _)| cat.as_str())
         .unwrap_or("general");
-    
+
     analysis.push_str(&format!("**Main App**: {}\n", primary_app));
-    analysis.push_str(&format!("**Primary Activity**: {}\n", 
-                             primary_productivity.replace("_", " ").to_title_case()));
-    
+    analysis.push_str(&format!(
+        "**Primary Activity**: {}\n",
+        primary_productivity.replace("_", " ").to_title_case()
+    ));
+
     if coding_indicators > communication_indicators {
         analysis.push_str("**Session Type**: Development-focused work\n");
     } else if communication_indicators > coding_indicators {
@@ -1640,10 +1992,13 @@ fn generate_statistical_report(
     } else {
         analysis.push_str("**Session Type**: Mixed activities\n");
     }
-    
-    analysis.push_str(&format!("\n*Analyzed {} activities across {} applications*", 
-                             total_rows, app_usage.len()));
-    
+
+    analysis.push_str(&format!(
+        "\n*Analyzed {} activities across {} applications*",
+        total_rows,
+        app_usage.len()
+    ));
+
     Ok(analysis)
 }
 
@@ -1659,10 +2014,12 @@ impl ToTitleCase for str {
                 let mut chars = word.chars();
                 match chars.next() {
                     None => String::new(),
-                    Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+                    Some(first) => {
+                        first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                    }
                 }
             })
             .collect::<Vec<_>>()
             .join(" ")
     }
-} 
+}

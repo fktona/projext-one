@@ -1,0 +1,9 @@
+{
+  "version": "0.2.0",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSYlBiUUtVVG1MNnBBNGFlODQxc3FFRVNsdGRpSENsRHpRR0U4REtibFlXNDIxYmVjeDNiSWV6Mmh6ZjNxNHZ6NFlhQTlzMjNnUkFjcHJSWWRFalp2RHVQQ1RDaS9xSWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzU0MDQwNjcyCWZpbGU6UHJvamVjdCBPbmVfMC4yLjBfeDY0X2VuLVVTLm1zaQoxbVZiSmRMM0VuNlc1d1UydjVsWlVSdlRaeVZaSWI2bzIvcU5jMXRvWUlwYlpNbVhrcldETG01QmgrN05taUVPRWxwb2xEaldKeGxDMEUweUE1WHhEZz09Cg==",
+      "url": "https://github.com/fktona/projext-one/releases/download/V0.2.0/Project.One_0.2.0_x64-setup.exe"
+    }
+  }
+}
